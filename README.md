@@ -1,18 +1,29 @@
-# React + Vite
+# 🌿 Sharp Lawn Mowing - Professional Estimator
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A high-precision lawn measurement and invoicing tool built for field service. This app allows you to measure property boundaries using satellite imagery, calculate costs instantly, and generate a professional PDF invoice for customers.
 
-Currently, two official plugins are available:
+## ✨ Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **Satellite Measurement:** Powered by Google Maps and TerraDraw for exact sq. ft. calculations.
+- **Instant Invoicing:** Generates a branded PDF with Venmo QR codes and customer details.
+- **Custom Fees:** Easy toggle for additional services like mulching or bush trimming.
+- **Persistent Storage:** Save estimates directly to a Supabase database for record-keeping.
 
-## React Compiler
+## 🛠️ Built With
 
-The React Compiler is enabled on this template. See [this documentation](https://react.dev/learn/react-compiler) for more information.
+- **React.js** (Vite)
+- **Google Maps API** (Geometry & Places)
+- **TerraDraw** (Vector drawing engine)
+- **Supabase** (Database & Auth)
+- **jsPDF & html2canvas** (PDF generation)
 
-Note: This will impact Vite dev & build performances.
+## 🚀 Getting Started
 
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+1. **Clone the repo:** `git clone https://github.com/YOUR_USERNAME/sharp-lawn-estimator.git`
+2. **Install dependencies:** `npm install`
+3. **Environment Variables:** Create a `.env` file with the following:
+   ```env
+   VITE_GOOGLE_MAPS_API_KEY=your_key_here
+   VITE_SUPABASE_URL=your_url_here
+   VITE_SUPABASE_ANON_KEY=your_anon_key_here
+   ```

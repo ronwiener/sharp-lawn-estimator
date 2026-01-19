@@ -98,12 +98,25 @@
 }
 
 /* Container for the bottom action buttons */
+/* Update the container to allow side-by-side */
 .action-buttons-container {
   display: flex;
-  flex-direction: column; /* This forces the vertical stack */
-  gap: 15px; /* Space between the two buttons */
-  width: 100%; /* Full width of the parent container */
+  flex-direction: column;
+  gap: 15px;
+  width: 100%;
   margin-top: 20px;
+}
+
+@media (max-width: 600px) {
+  /* Stack the PDF buttons vertically on mobile if they get too cramped */
+  .action-buttons-container div {
+    flex-direction: column;
+  }
+
+  .btn-sharp-pdf,
+  .btn-customer-pdf {
+    width: 100%;
+  }
 }
 
 /* Base style for both buttons */

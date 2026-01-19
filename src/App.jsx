@@ -68,48 +68,72 @@ export default function LawnBusinessApp() {
       </div>
     );
 
-  const downloadPDF = async () => {
+  const downloadPDF = async (type = "sharp") => {
     const element = estimateRef.current;
     if (!element) return;
 
     try {
-      // 1. Create a clone of the estimate to manipulate safely
       const clone = element.cloneNode(true);
 
-      // 2. Force the clone to have NO height limits and be full width
+      if (type === "customer") {
+        // 1. Hide 'Details' and 'Amount' columns from the table
+        const allRows = clone.querySelectorAll("tr");
+        allRows.forEach((row) => {
+          const cells = row.querySelectorAll("th, td");
+          // Hide Middle Column (Details/Sq Ft)
+          if (cells[1]) cells[1].style.display = "none";
+          // Hide Right Column (Individual Prices) except in the Total block
+          if (cells[2]) cells[2].style.display = "none";
+        });
+
+        // 2. Adjust the Total Block
+        const totalBlock = clone.querySelector(
+          "div[style*='background-color: #f8f9fa']",
+        );
+        if (totalBlock) {
+          // Hide the Subtotal line
+          const subtotalLine = totalBlock.querySelector("div:first-child");
+          if (subtotalLine) subtotalLine.style.display = "none";
+
+          // Ensure the Final Total line is visible and centered/styled appropriately
+          const totalLine = totalBlock.querySelector(
+            "div[style*='font-size: 20px']",
+          );
+          if (totalLine) {
+            totalLine.style.borderTop = "none";
+            totalLine.style.paddingTop = "0";
+          }
+        }
+      }
+
+      // Capture and Generate PDF
       Object.assign(clone.style, {
         position: "absolute",
-        top: "-9999px", // Hide it off-screen
+        top: "-9999px",
         left: "0",
-        width: "800px", // Standard PDF width
-        height: "auto", // Let it grow as long as it needs
-        overflow: "visible",
+        width: "800px",
+        height: "auto",
         display: "block",
       });
 
       document.body.appendChild(clone);
-
-      // 3. Capture the clone, not the original
       const canvas = await html2canvas(clone, {
         scale: 2,
         useCORS: true,
         backgroundColor: "#ffffff",
-        logging: false,
-        height: clone.scrollHeight, // Capture every single pixel of height
-        windowHeight: clone.scrollHeight,
+        height: clone.scrollHeight,
       });
-
-      // 4. Cleanup the ghost element immediately
       document.body.removeChild(clone);
 
       const imgData = canvas.toDataURL("image/png");
       const pdf = new jsPDF("p", "mm", "a4");
       const pdfWidth = pdf.internal.pageSize.getWidth();
-      const imgProps = pdf.getImageProperties(imgData);
-      const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
 
       pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
-      pdf.save(`Lawn_Estimate_${customer.name || "Customer"}.pdf`);
+      pdf.save(
+        `${type === "sharp" ? "Sharp" : "Customer"}_Estimate_${customer.name || "Client"}.pdf`,
+      );
     } catch (err) {
       console.error("PDF Error:", err);
     }
@@ -455,9 +479,45 @@ export default function LawnBusinessApp() {
         setPricingData={setPricingData}
       />
       <div className="action-buttons-container">
-        <button onClick={downloadPDF} className="btn-download">
-          Download PDF Copy
-        </button>
+        {/* Side-by-Side PDF Buttons */}
+        <div style={{ display: "flex", gap: "15px", marginBottom: "10px" }}>
+          <button
+            onClick={() => downloadPDF("sharp")}
+            style={{
+              flex: 1,
+              backgroundColor: "#ee5253", // Red
+              color: "white",
+              padding: "18px",
+              borderRadius: "8px",
+              fontWeight: "bold",
+              border: "none",
+              cursor: "pointer",
+              fontSize: "16px",
+              boxShadow: "0 2px 5px rgba(0,0,0,0.1)",
+            }}
+          >
+            Sharp PDF
+          </button>
+          <button
+            onClick={() => downloadPDF("customer")}
+            style={{
+              flex: 1,
+              backgroundColor: "#3498db", // Blue
+              color: "white",
+              padding: "18px",
+              borderRadius: "8px",
+              fontWeight: "bold",
+              border: "none",
+              cursor: "pointer",
+              fontSize: "16px",
+              boxShadow: "0 2px 5px rgba(0,0,0,0.1)",
+            }}
+          >
+            Customer PDF
+          </button>
+        </div>
+
+        {/* Full Width Save Button */}
         <button
           onClick={() => formRef.current?.requestSubmit()}
           className="btn-save"
