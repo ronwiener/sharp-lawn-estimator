@@ -317,10 +317,15 @@ export default function LawnBusinessApp() {
                     Standard service based on area measurement
                   </div>
                 </td>
+
+                {/* --- UPDATED MIDDLE CELL --- */}
                 <td style={{ textAlign: "right", padding: "12px" }}>
-                  {totalArea.toLocaleString()} sq ft @ $
-                  {pricingData.ratePerSqFt}/sq ft
+                  {totalArea * pricingData.ratePerSqFt < 50
+                    ? "Minimum Charge"
+                    : `${totalArea.toLocaleString()} sq ft @ $${pricingData.ratePerSqFt}/sq ft`}
                 </td>
+
+                {/* --- UPDATED RIGHT CELL --- */}
                 <td
                   style={{
                     textAlign: "right",
@@ -328,7 +333,11 @@ export default function LawnBusinessApp() {
                     fontWeight: "bold",
                   }}
                 >
-                  ${(totalArea * pricingData.ratePerSqFt).toFixed(2)}
+                  $
+                  {(totalArea * pricingData.ratePerSqFt < 50
+                    ? 50
+                    : totalArea * pricingData.ratePerSqFt
+                  ).toFixed(2)}
                 </td>
               </tr>
 
@@ -540,7 +549,13 @@ function CompleteEstimateApp({
   const handleSave = async (e) => {
     e.preventDefault();
     if (totalArea === 0) return alert("Please measure an area first.");
+
     try {
+      // Calculate the mowing price with the $50 minimum logic
+      const rawLawnCost =
+        totalArea * (parseFloat(pricingData.ratePerSqFt) || 0);
+      const billedLawnPrice = rawLawnCost < 50 ? 50 : rawLawnCost;
+
       const { error } = await supabase.from("estimates").insert([
         {
           name: customer.name,
@@ -550,17 +565,21 @@ function CompleteEstimateApp({
           lawn_area: totalArea,
           notes: customer.notes,
           rate_used: parseFloat(pricingData.ratePerSqFt) || 0,
+          // We store the adjusted lawn price to keep records clear
           extra_label: pricingData.customExtra?.active
             ? pricingData.customExtra.label
             : null,
           extra_price: pricingData.customExtra?.active
             ? parseFloat(pricingData.customExtra.price)
             : 0,
+          // This is the total the customer actually pays (already includes the $50 min)
           final_price: pricingData.finalTotal,
         },
       ]);
+
       if (error) throw error;
       alert("Success! Estimate stored.");
+
       setCustomer({ name: "", address: "", phone: "", email: "", notes: "" });
       if (resetApp) resetApp();
     } catch (err) {
@@ -902,7 +921,8 @@ function LawnCalculator({ setTotalArea, totalArea, onLoadClear }) {
 
 function EstimateCalculator({ mapTotalArea, pricingData, setPricingData }) {
   const { customExtra, ratePerSqFt } = pricingData;
-  const lawnCost = mapTotalArea * ratePerSqFt;
+  const rawLawnCost = mapTotalArea * ratePerSqFt;
+  const lawnCost = rawLawnCost < 50 ? 50 : rawLawnCost;
   const extraCost = customExtra.active ? parseFloat(customExtra.price || 0) : 0;
   const finalTotal = lawnCost + extraCost;
 
