@@ -131,8 +131,13 @@ export default function LawnBusinessApp() {
       const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
 
       pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
+
+      const fileNameName = customer.name
+        ? customer.name.replace(/\s+/g, "_")
+        : "Customer";
+
       pdf.save(
-        `${type === "sharp" ? "Sharp" : "Customer"}_Estimate_${customer.name || "Client"}.pdf`,
+        `${type === "sharp" ? "Sharp" : "Customer"}_Estimate_${fileNameName}.pdf`,
       );
     } catch (err) {
       console.error("PDF Error:", err);
