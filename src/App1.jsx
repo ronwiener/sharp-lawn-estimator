@@ -16,7 +16,7 @@ import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import logoImg from "./assets/sharp.JPG";
 import venmoQR from "./assets/venmoQR.PNG";
-import "./LawnApp.css";
+import "./LawnApp1.css";
 
 const LIBRARIES = ["geometry", "places"]; // Removed "drawing" library
 
@@ -75,69 +75,64 @@ export default function LawnBusinessApp() {
     try {
       const clone = element.cloneNode(true);
 
+      // CRITICAL: Ensure inputs/text match current state in the clone
+      // Since clones don't always carry over dynamic React text updates perfectly
+      const cloneName = clone.querySelector('p[style*="font-weight: bold"]');
+      if (cloneName) cloneName.innerText = customer.name || "Valued Customer";
+
       if (type === "customer") {
-        // 1. Hide 'Details' and 'Amount' columns from the table
+        // Hide Details and Amount columns
         const allRows = clone.querySelectorAll("tr");
         allRows.forEach((row) => {
           const cells = row.querySelectorAll("th, td");
-          // Hide Middle Column (Details/Sq Ft)
           if (cells[1]) cells[1].style.display = "none";
-          // Hide Right Column (Individual Prices) except in the Total block
           if (cells[2]) cells[2].style.display = "none";
         });
 
-        // 2. Adjust the Total Block
-        const totalBlock = clone.querySelector(
-          "div[style*='background-color: #f8f9fa']",
+        // Hide Subtotal in total block
+        const subtotalLine = clone.querySelector(
+          "div[style*='background-color: #f8f9fa'] div:first-child",
         );
-        if (totalBlock) {
-          // Hide the Subtotal line
-          const subtotalLine = totalBlock.querySelector("div:first-child");
-          if (subtotalLine) subtotalLine.style.display = "none";
-
-          // Ensure the Final Total line is visible and centered/styled appropriately
-          const totalLine = totalBlock.querySelector(
-            "div[style*='font-size: 20px']",
-          );
-          if (totalLine) {
-            totalLine.style.borderTop = "none";
-            totalLine.style.paddingTop = "0";
-          }
-        }
+        if (subtotalLine) subtotalLine.style.display = "none";
       }
 
-      // Capture and Generate PDF
+      // Capture and Generate PDF with Dynamic Height
       Object.assign(clone.style, {
         position: "absolute",
         top: "-9999px",
         left: "0",
         width: "800px",
-        height: "auto",
+        height: "auto", // Let it grow
         display: "block",
+        overflow: "visible",
       });
 
       document.body.appendChild(clone);
+
       const canvas = await html2canvas(clone, {
         scale: 2,
         useCORS: true,
         backgroundColor: "#ffffff",
-        height: clone.scrollHeight,
+        windowWidth: 800, // Lock width
+        height: clone.offsetHeight, // Use offsetHeight to capture the full expanded notes
       });
+
       document.body.removeChild(clone);
 
       const imgData = canvas.toDataURL("image/png");
       const pdf = new jsPDF("p", "mm", "a4");
       const pdfWidth = pdf.internal.pageSize.getWidth();
+      // Calculate height proportionally so it doesn't compress
       const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
 
       pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
 
-      const fileNameName = customer.name
-        ? customer.name.replace(/\s+/g, "_")
-        : "Customer";
-
+      // Sanitize filename
+      const safeName = (customer.name || "Customer")
+        .trim()
+        .replace(/[^a-z0-9]/gi, "_");
       pdf.save(
-        `${type === "sharp" ? "Sharp" : "Customer"}_Estimate_${fileNameName}.pdf`,
+        `${type === "sharp" ? "Sharp" : "Customer"}_Estimate_${safeName}.pdf`,
       );
     } catch (err) {
       console.error("PDF Error:", err);
@@ -424,7 +419,8 @@ export default function LawnBusinessApp() {
                 width: "100%",
                 display: "block",
                 clear: "both",
-                pageBreakInside: "avoid", // Prevents the box from splitting awkwardly
+                pageBreakInside: "avoid",
+                boxSizing: "border-box",
               }}
             >
               <h4
@@ -445,11 +441,10 @@ export default function LawnBusinessApp() {
                 style={{
                   margin: 0,
                   fontSize: "14px",
-                  fontWeight: "bold",
                   color: "#333",
-                  whiteSpace: "pre-wrap", // Preserves line breaks and wraps text
+                  whiteSpace: "pre-wrap",
                   wordBreak: "break-word",
-                  height: "auto",
+                  lineHeight: "1.4",
                 }}
               >
                 {customer.notes}
@@ -482,7 +477,6 @@ export default function LawnBusinessApp() {
 
       {/* THE MAP IS NOW OUTSIDE THE PDF CONTAINER */}
       <LawnCalculator
-        isLoaded={isLoaded}
         setTotalArea={setTotalArea}
         totalArea={totalArea}
         onLoadClear={(fn) => (clearMapRef.current = fn)}
@@ -702,55 +696,30 @@ function CompleteEstimateApp({
   );
 }
 
-function LawnCalculator({ isLoaded, setTotalArea, totalArea, onLoadClear }) {
+function LawnCalculator({ setTotalArea, totalArea, onLoadClear }) {
   const [labelPosition, setLabelPosition] = useState(null);
   const [autocomplete, setAutocomplete] = useState(null);
   const [mapZoom, setMapZoom] = useState(14);
   const [mapCenter, setMapCenter] = useState({ lat: 26.1224, lng: -80.1373 });
   const [mapInstance, setMapInstance] = useState(null);
-  const [mode, setMode] = useState("polygon");
   const mapRef = useRef(null);
   const drawRef = useRef(null);
-  const modeSwitcherRef = useRef(null);
-
-  const onMapLoad = (map) => {
-    console.log("THE MAP HAS LOADED SUCCESSFULLY");
-    setMapInstance(map);
-  };
 
   useEffect(() => {
-    console.log("DEBUG: useEffect Heartbeat", {
-      isLoaded,
-      hasMap: !!mapInstance,
-      hasGeometry: !!window.google?.maps?.geometry,
-    });
-
-    if (!isLoaded || !mapInstance || !window.google?.maps?.geometry) {
-      console.log("STOP: Dependencies not ready", { isLoaded, mapInstance });
+    // 1. Wait for mapInstance AND the geometry library
+    if (!mapInstance || drawRef.current || !window.google?.maps?.geometry)
       return;
-    }
 
     const initDraw = () => {
-      console.log("2. initDraw called");
-      if (drawRef.current) {
-        console.log("STOP: drawRef already exists");
-        return;
-      }
-      const mapDiv = document.getElementById("terra-draw-overlay");
-      if (!mapDiv) {
-        console.log("STOP: HTML element terra-draw-overlay not found");
-        return;
-      }
-
       try {
-        console.log("DEBUG: initDraw is running!");
+        // 2. CRITICAL FIX: TerraDraw Google Adapter needs a div with an ID
+        const mapDiv = mapInstance.getDiv();
+        if (!mapDiv.id) mapDiv.id = "terra-draw-map-canvas";
 
         const draw = new TerraDraw({
           adapter: new TerraDrawGoogleMapsAdapter({
             map: mapInstance,
             lib: window.google.maps,
-            coordinatePrecision: 9,
-            container: mapDiv,
           }),
           modes: [
             new TerraDrawPolygonMode({
@@ -773,19 +742,19 @@ function LawnCalculator({ isLoaded, setTotalArea, totalArea, onLoadClear }) {
                   },
                 },
               },
-              styles: {
-                selectedPolygonColor: "rgba(39, 174, 96, 0.3)",
-                selectionPointColor: "#ffffff",
-                selectionPointOutlineColor: "#ff0000",
-                selectionPointWidth: 35,
-                selectionPointOutlineWidth: 6,
-              },
             }),
           ],
         });
 
+        // 3. CRITICAL FIX: Wait for adapter ready before setting mode
+        draw.on("ready", () => {
+          draw.setMode("polygon");
+        });
+
+        draw.start();
+        drawRef.current = draw;
+
         const handleDrawChange = () => {
-          console.log("Map Event Triggered: Calculating Area...");
           const snapshot = draw.getSnapshot();
           let newTotalArea = 0;
           snapshot.forEach((feature) => {
@@ -797,148 +766,41 @@ function LawnCalculator({ isLoaded, setTotalArea, totalArea, onLoadClear }) {
               const area =
                 window.google.maps.geometry.spherical.computeArea(path);
               newTotalArea += Math.round(area * 10.7639);
-              if (path.length > 0)
-                setLabelPosition({ lat: path[0].lat, lng: path[0].lng });
+              setLabelPosition({ lat: path[0].lat, lng: path[0].lng });
             }
           });
           setTotalArea(newTotalArea);
         };
 
-        draw.on("ready", () => {
-          console.log("✅ TerraDraw Ready");
-          const overlayElement = document.getElementById("terra-draw-overlay");
-          if (overlayElement) {
-            overlayElement.addEventListener(
-              "mousedown",
-              (e) => {
-                console.log(
-                  "🖱️ Mouse Down on Overlay! Target:",
-                  e.target.tagName,
-                );
-              },
-              true,
-            );
-          }
-          draw.setMode("polygon");
-          draw.on("finish", handleDrawChange);
-          draw.on("change", handleDrawChange);
-          draw.on("select", (id) => {
-            console.log("🎯 FEATURE SELECTED (Internal Event):", id);
-            handleDrawChange();
-          });
-          draw.on("deselect", () => {
-            console.log("⚪ FEATURE DESELECTED (Internal Event)");
-            handleDrawChange();
-          });
-        });
-
-        draw.start();
-        const overlayElement = document.getElementById("terra-draw-overlay");
-        if (overlayElement) {
-          overlayElement.addEventListener(
-            "mousedown",
-            (e) => {
-              console.log(
-                "🖱️ Mouse Down on Overlay! Target:",
-                e.target.tagName,
-              );
-            },
-            true,
-          );
-        }
-        drawRef.current = draw;
-        console.log("🚀 TERRA DRAW STARTED.");
-
-        if (mapDiv) {
-          console.log("📏 Overlay Dimensions Check:", {
-            width: mapDiv.offsetWidth,
-            height: mapDiv.offsetHeight,
-            zIndex: window.getComputedStyle(mapDiv).zIndex,
-            display: window.getComputedStyle(mapDiv).display,
-          });
-        }
-
-        // --- THE SWITCHER ---
-        modeSwitcherRef.current = (targetMode) => {
-          console.log(`Switching TerraDraw to: ${targetMode}`);
-          if (!drawRef.current) return;
-
-          if (targetMode === "select") {
-            // Wake up the overlay
-            const overlay = document.getElementById("terra-draw-overlay");
-            if (overlay) overlay.style.pointerEvents = "auto";
-
-            console.log("🔍 Pointer Events Check:", {
-              overlay: overlay
-                ? window.getComputedStyle(overlay).pointerEvents
-                : "Not Found",
-              canvas: document.querySelector("#terra-draw-overlay canvas")
-                ? window.getComputedStyle(
-                    document.querySelector("#terra-draw-overlay canvas"),
-                  ).pointerEvents
-                : "Canvas Not Found",
-            });
-
-            drawRef.current.setMode("select");
-
-            // 1. LOCK MAP
-            mapInstance.setOptions({
-              gestureHandling: "none",
-              draggable: false,
-            });
-
-            if (drawRef.current.getAdapter()) {
-              drawRef.current.getAdapter().resize();
-            }
-
-            const snapshot = drawRef.current.getSnapshot();
-            if (snapshot.length > 0) {
-              console.log("🔍 Attempting to select ID:", snapshot[0].id);
-              const featureId = snapshot[0].id;
-              drawRef.current.deselectFeature(featureId);
-              setTimeout(() => {
-                drawRef.current.selectFeature(featureId);
-                console.log("✅ Engine refresh and selection complete");
-              }, 150);
-            } else {
-              console.warn("⚠️ No polygons found in snapshot to edit!");
-            }
-          } else {
-            // RESET: Put overlay back to click-through
-            const overlay = document.getElementById("terra-draw-overlay");
-            if (overlay) overlay.style.pointerEvents = "none";
-
-            // 2. UNLOCK MAP
-            mapInstance.setOptions({
-              gestureHandling: "greedy",
-              draggable: true,
-            });
-            drawRef.current.setMode("polygon");
-          }
-        }; // End of modeSwitcherRef
+        draw.on("finish", handleDrawChange);
+        draw.on("change", handleDrawChange);
       } catch (err) {
         console.error("Terra Draw Init Error:", err);
       }
-    }; // End of initDraw
+    };
 
-    // --- EXECUTION LOGIC ---
-    if (mapInstance && mapInstance.getProjection()) {
+    // 4. Wait for projection to be ready (ensures coordinates map correctly)
+    const listener = mapInstance.addListener("projection_changed", () => {
       initDraw();
-    } else {
-      const listener = mapInstance.addListener("projection_changed", () => {
-        initDraw();
-        window.google.maps.event.removeListener(listener);
-      });
-    }
+      window.google.maps.event.removeListener(listener);
+    });
 
     return () => {
       if (drawRef.current) {
         drawRef.current.stop();
         drawRef.current = null;
-        modeSwitcherRef.current = null;
       }
     };
-  }, [isLoaded, mapInstance, setTotalArea]);
+  }, [mapInstance, setTotalArea]);
+
+  const onMapLoad = (map) => {
+    mapRef.current = map;
+    setMapInstance(map);
+    map.setOptions({
+      clickableIcons: false,
+      gestureHandling: "greedy",
+    });
+  };
 
   const handleClearAll = useCallback(() => {
     if (drawRef.current) drawRef.current.clear();
@@ -947,26 +809,24 @@ function LawnCalculator({ isLoaded, setTotalArea, totalArea, onLoadClear }) {
   }, [setTotalArea]);
 
   useEffect(() => {
-    if (onLoadClear) onLoadClear(handleClearAll);
+    if (onLoadClear) {
+      onLoadClear(handleClearAll);
+    }
   }, [onLoadClear, handleClearAll]);
 
   const onPlaceChanged = () => {
-    if (autocomplete) {
+    if (autocomplete && mapRef.current) {
       const place = autocomplete.getPlace();
       if (place.geometry?.location) {
-        // 1. Center immediately
-        mapInstance.setCenter(place.geometry.location);
-        mapInstance.setMapTypeId("satellite");
-        mapInstance.setTilt(0);
-
-        // 2. Use a slight delay to ensure the map tiles catch up
-        setTimeout(() => {
-          mapInstance.setZoom(21);
-          setMapZoom(21);
-          // Double-check Satellite again after zoom
-          mapInstance.setMapTypeId("satellite");
-        }, 350);
+        mapRef.current.panTo(place.geometry.location);
         setMapCenter(place.geometry.location);
+        setTimeout(() => {
+          if (mapRef.current) {
+            mapRef.current.setZoom(21);
+            setMapZoom(21);
+            mapRef.current.setMapTypeId("satellite");
+          }
+        }, 150);
       }
     }
   };
@@ -997,46 +857,22 @@ function LawnCalculator({ isLoaded, setTotalArea, totalArea, onLoadClear }) {
             />
           </Autocomplete>
         </div>
-        {/* DRAW BUTTON */}
         <button
           type="button"
-          className={`btn-draw ${mode === "polygon" ? "active" : ""}`}
+          className="btn-draw"
           onClick={() => {
-            if (modeSwitcherRef.current && mapInstance) {
-              setMode("polygon");
-              // RESTORE MAP NAVIGATION
-              mapInstance.setOptions({
-                gestureHandling: "greedy",
-                draggable: true,
-                draggableCursor: "crosshair",
-              });
-              // Call the stable switcher
-              modeSwitcherRef.current("polygon");
+            if (drawRef.current) {
+              drawRef.current.setMode("polygon");
+              mapRef.current.setOptions({ draggableCursor: "crosshair" });
             }
           }}
         >
           Draw
         </button>
-
-        {/* EDIT BUTTON */}
         <button
           type="button"
-          className={`btn-edit ${mode === "select" ? "active" : ""}`}
-          onClick={() => {
-            console.log("Button Clicked!");
-            console.log("mapInstance exists:", !!mapInstance);
-            console.log("modeSwitcher exists:", !!modeSwitcherRef.current);
-            if (modeSwitcherRef.current && mapInstance) {
-              setMode("select");
-              mapInstance.setOptions({
-                gestureHandling: "none",
-                draggable: false,
-              });
-              modeSwitcherRef.current("select");
-            } else {
-              console.warn("Conditions not met to enter Edit mode.");
-            }
-          }}
+          className="btn-edit"
+          onClick={() => drawRef.current?.setMode("select")}
         >
           Edit
         </button>
@@ -1048,18 +884,14 @@ function LawnCalculator({ isLoaded, setTotalArea, totalArea, onLoadClear }) {
         </button>
       </div>
 
-      <div
-        id="map-canvas-container"
-        className={`map-container ${mode === "select" ? "edit-mode-active" : ""}`}
-        style={{ position: "relative" }} // Ensures the overlay aligns perfectly
-      >
+      <div id="map-canvas-container">
         <GoogleMap
           onLoad={onMapLoad}
           zoom={mapZoom}
           center={mapCenter}
           mapTypeId="satellite"
           mapContainerStyle={{
-            height: "100%",
+            height: "60vh",
             width: "100%",
             borderRadius: "12px",
           }}
@@ -1074,7 +906,7 @@ function LawnCalculator({ isLoaded, setTotalArea, totalArea, onLoadClear }) {
           {totalArea > 0 && labelPosition && (
             <OverlayView
               position={labelPosition}
-              mapPaneName={OverlayView.FLOAT_PANE}
+              mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
             >
               <div className="area-label">
                 {totalArea.toLocaleString()} sq ft
@@ -1082,22 +914,6 @@ function LawnCalculator({ isLoaded, setTotalArea, totalArea, onLoadClear }) {
             </OverlayView>
           )}
         </GoogleMap>
-
-        {/* THE FIX: Dedicated Terra Draw Layer */}
-        <div
-          id="terra-draw-overlay"
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            width: "100%",
-            height: "100%",
-            pointerEvents: "none", // Changed to 'auto' via CSS when active
-            zIndex: 10,
-            borderRadius: "12px",
-            overflow: "hidden",
-          }}
-        />
       </div>
     </div>
   );

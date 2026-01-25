@@ -5,22 +5,9 @@
   padding: 15px;
 }
 
-.pac-container {
-  z-index: 10000 !important;
-  pointer-events: auto !important;
-}
-
 .search-wrapper {
   flex: 2; /* Search bar takes available space */
   min-width: 200px;
-  position: relative;
-}
-
-.search-wrapper,
-.search-input {
-  position: relative !important;
-  z-index: 9999 !important;
-  pointer-events: all !important;
 }
 
 /* Step 1: Customer Grid */
@@ -87,6 +74,28 @@
 .btn-clear {
   background-color: #ee5253;
 }
+.area-label {
+  background: white;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-weight: bold;
+  font-size: 16px;
+  min-width: max-content;
+  width: auto;
+  text-align: center;
+  transform: translate(30%, -150%);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  white-space: nowrap;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+  z-index: 1000;
+  pointer-events: none;
+  transition: all 0.3s ease-out;
+  will-change: transform;
+}
+
+.search-wrapper {
+  flex: 1;
+}
 
 /* Container for the bottom action buttons */
 /* Update the container to allow side-by-side */
@@ -147,90 +156,6 @@
   overflow: visible !important;
 }
 
-/* 1. UI LABELS */
-.area-label {
-  background: white;
-  padding: 8px 12px;
-  border-radius: 4px;
-  font-weight: bold;
-  font-size: 16px;
-  min-width: max-content;
-  width: auto;
-  text-align: center;
-  transform: translate(30%, -150%);
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
-  z-index: 10001 !important;
-  pointer-events: none;
-  transition: all 0.3s ease-out;
-  will-change: transform;
-}
-
-/* 2. MAP CONTAINER SETUP */
-.map-container {
-  position: relative;
-  width: 100%;
-  height: 60vh;
-  margin-top: 20px;
-  border-radius: 12px;
-  overflow: visible !important;
-  border: 1px solid #ccc;
-}
-
-/* 3. NEW TERRA DRAW OVERLAY (The Fix) */
-#terra-draw-overlay {
-  position: absolute !important;
-  inset: 0 !important;
-  background: transparent !important; /* Forces transparency */
-  z-index: 10 !important;
-  pointer-events: none !important;
-  display: block !important;
-  overflow: visible !important;
-}
-
-/* Force the internal drawing canvas to the absolute top */
-#terra-draw-overlay canvas {
-  width: 100% !important;
-  height: 100% !important;
-  display: block !important;
-  pointer-events: auto !important;
-  z-index: 2147483647 !important;
-  visibility: visible !important;
-}
-
-/* 4. EDIT MODE ACTIVE STATE */
-.map-container.edit-mode-active #terra-draw-overlay {
-  pointer-events: auto !important;
-  overflow: visible !important;
-  z-index: 1001 !important;
-}
-.map-container.edit-mode-active #terra-draw-overlay canvas {
-  pointer-events: auto !important;
-}
-.map-container.edit-mode-active .gm-style > div:nth-child(2) {
-  display: none !important;
-}
-
-/* Lock Google's internal interaction layers during edit */
-.map-container.edit-mode-active .gm-style > div:nth-child(n + 2) {
-  pointer-events: none !important;
-}
-
-/* Visual cue: Dim map tiles so red handles are easy to see */
-.map-container.edit-mode-active .gm-style > div:first-child {
-  pointer-events: none !important;
-  filter: grayscale(0.3) brightness(0.9);
-  transition: filter 0.3s ease;
-}
-
-/* Ensure map UI (zoom buttons, etc.) stay clickable if needed */
-.map-container.edit-mode-active .gmnoprint,
-.map-container.edit-mode-active .gm-svpc {
-  pointer-events: auto !important;
-}
-
-.gm-style {
-  background: transparent !important;
-}
 /* Mobile Adjustments (Screens smaller than 600px) */
 @media (max-width: 600px) {
   /* Stack the customer inputs */
