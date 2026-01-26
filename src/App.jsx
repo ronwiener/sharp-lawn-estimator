@@ -75,69 +75,75 @@ export default function LawnBusinessApp() {
     try {
       const clone = element.cloneNode(true);
 
+      // CRITICAL: Ensure inputs/text match current state in the clone
+      // Since clones don't always carry over dynamic React text updates perfectly
+      const cloneName = clone.querySelector('p[style*="font-weight: bold"]');
+      if (cloneName) cloneName.innerText = customer.name || "Valued Customer";
+
       if (type === "customer") {
-        // 1. Hide 'Details' and 'Amount' columns from the table
+        // Hide Details and Amount columns
         const allRows = clone.querySelectorAll("tr");
         allRows.forEach((row) => {
           const cells = row.querySelectorAll("th, td");
-          // Hide Middle Column (Details/Sq Ft)
           if (cells[1]) cells[1].style.display = "none";
-          // Hide Right Column (Individual Prices) except in the Total block
           if (cells[2]) cells[2].style.display = "none";
         });
 
-        // 2. Adjust the Total Block
-        const totalBlock = clone.querySelector(
-          "div[style*='background-color: #f8f9fa']",
+        // Hide Subtotal in total block
+        const subtotalLine = clone.querySelector(
+          "div[style*='background-color: #f8f9fa'] div:first-child",
         );
-        if (totalBlock) {
-          // Hide the Subtotal line
-          const subtotalLine = totalBlock.querySelector("div:first-child");
-          if (subtotalLine) subtotalLine.style.display = "none";
-
-          // Ensure the Final Total line is visible and centered/styled appropriately
-          const totalLine = totalBlock.querySelector(
-            "div[style*='font-size: 20px']",
-          );
-          if (totalLine) {
-            totalLine.style.borderTop = "none";
-            totalLine.style.paddingTop = "0";
-          }
-        }
+        if (subtotalLine) subtotalLine.style.display = "none";
       }
 
-      // Capture and Generate PDF
+      // Capture and Generate PDF with Dynamic Height
       Object.assign(clone.style, {
         position: "absolute",
         top: "-9999px",
         left: "0",
         width: "800px",
-        height: "auto",
+        height: "auto", // Let it grow
         display: "block",
+        overflow: "visible",
       });
 
       document.body.appendChild(clone);
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
       const canvas = await html2canvas(clone, {
-        scale: 2,
+        scale: 1.5,
         useCORS: true,
         backgroundColor: "#ffffff",
-        height: clone.scrollHeight,
+        windowWidth: 800, // Lock width
+        height: clone.offsetHeight, // Use offsetHeight to capture the full expanded notes
       });
+
       document.body.removeChild(clone);
 
-      const imgData = canvas.toDataURL("image/png");
+      const imgData = canvas.toDataURL("image/jpeg", 0.7);
       const pdf = new jsPDF("p", "mm", "a4");
       const pdfWidth = pdf.internal.pageSize.getWidth();
+      // Calculate height proportionally so it doesn't compress
       const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
 
-      pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
+      pdf.addImage(
+        imgData,
+        "JPEG",
+        0,
+        0,
+        pdfWidth,
+        pdfHeight,
+        undefined,
+        "FAST",
+      );
 
-      const fileNameName = customer.name
-        ? customer.name.replace(/\s+/g, "_")
-        : "Customer";
-
+      // Sanitize filename
+      const safeName = (customer.name || "Customer")
+        .trim()
+        .replace(/[^a-z0-9]/gi, "_");
       pdf.save(
-        `${type === "sharp" ? "Sharp" : "Customer"}_Estimate_${fileNameName}.pdf`,
+        `${type === "sharp" ? "Sharp" : "Customer"}_Estimate_${safeName}.pdf`,
       );
     } catch (err) {
       console.error("PDF Error:", err);
@@ -424,7 +430,8 @@ export default function LawnBusinessApp() {
                 width: "100%",
                 display: "block",
                 clear: "both",
-                pageBreakInside: "avoid", // Prevents the box from splitting awkwardly
+                pageBreakInside: "avoid",
+                boxSizing: "border-box",
               }}
             >
               <h4
@@ -445,11 +452,10 @@ export default function LawnBusinessApp() {
                 style={{
                   margin: 0,
                   fontSize: "14px",
-                  fontWeight: "bold",
                   color: "#333",
-                  whiteSpace: "pre-wrap", // Preserves line breaks and wraps text
+                  whiteSpace: "pre-wrap",
                   wordBreak: "break-word",
-                  height: "auto",
+                  lineHeight: "1.4",
                 }}
               >
                 {customer.notes}
@@ -744,6 +750,11 @@ function LawnCalculator({ isLoaded, setTotalArea, totalArea, onLoadClear }) {
 
       try {
         console.log("DEBUG: initDraw is running!");
+
+        const internalGoogleDiv = mapInstance.getDiv();
+        if (internalGoogleDiv && !internalGoogleDiv.id) {
+          internalGoogleDiv.id = "internal-google-map-id";
+        }
 
         const draw = new TerraDraw({
           adapter: new TerraDrawGoogleMapsAdapter({

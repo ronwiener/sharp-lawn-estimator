@@ -109,8 +109,10 @@ export default function LawnBusinessApp() {
 
       document.body.appendChild(clone);
 
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
       const canvas = await html2canvas(clone, {
-        scale: 2,
+        scale: 1.5,
         useCORS: true,
         backgroundColor: "#ffffff",
         windowWidth: 800, // Lock width
@@ -119,13 +121,22 @@ export default function LawnBusinessApp() {
 
       document.body.removeChild(clone);
 
-      const imgData = canvas.toDataURL("image/png");
+      const imgData = canvas.toDataURL("image/jpeg", 0.7);
       const pdf = new jsPDF("p", "mm", "a4");
       const pdfWidth = pdf.internal.pageSize.getWidth();
       // Calculate height proportionally so it doesn't compress
       const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
 
-      pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
+      pdf.addImage(
+        imgData,
+        "JPEG",
+        0,
+        0,
+        pdfWidth,
+        pdfHeight,
+        undefined,
+        "FAST",
+      );
 
       // Sanitize filename
       const safeName = (customer.name || "Customer")
