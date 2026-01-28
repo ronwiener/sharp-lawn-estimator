@@ -1,16 +1,18 @@
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, {
+  useState,
+  useRef,
+  useEffect,
+  useCallback,
+  useMemo,
+} from "react";
 import {
   GoogleMap,
   Autocomplete,
   useJsApiLoader,
   OverlayView,
+  Polygon,
 } from "@react-google-maps/api";
-import {
-  TerraDraw,
-  TerraDrawPolygonMode,
-  TerraDrawSelectMode,
-} from "terra-draw";
-import { TerraDrawGoogleMapsAdapter } from "terra-draw-google-maps-adapter";
+
 import { supabase } from "./supabaseClient";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
@@ -18,7 +20,7 @@ import logoImg from "./assets/sharp.JPG";
 import venmoQR from "./assets/venmoQR.PNG";
 import "./LawnApp.css";
 
-const LIBRARIES = ["geometry", "places"]; // Removed "drawing" library
+const LIBRARIES = Object.freeze(["geometry", "places"]);
 
 export default function LawnBusinessApp() {
   const [customer, setCustomer] = useState({
@@ -175,11 +177,23 @@ export default function LawnBusinessApp() {
           boxSizing: "border-box",
         }}
       >
-        <h1 style={{ textAlign: "center" }}>
+        <h1 style={{ textAlign: "center", margin: 0 }}>
           <img
             src={logoImg}
             alt="Logo"
-            style={{ height: "150px", borderRadius: "8px" }}
+            style={{
+              height: "150px",
+              borderRadius: "12px",
+              border: "6px solid #27ae60",
+              padding: "25px",
+              backgroundColor: "transparent",
+              display: "inline-block",
+              objectFit: "contain",
+              // React-safe camelCase naming:
+              mixBlendMode: "multiply",
+              // This filter forces light greys to become white so 'multiply' works better
+              filter: "contrast(1.1) brightness(1.1)",
+            }}
           />
         </h1>
 
@@ -563,11 +577,6 @@ function CompleteEstimateApp({
     if (totalArea === 0) return alert("Please measure an area first.");
 
     try {
-      // Calculate the mowing price with the $50 minimum logic
-      const rawLawnCost =
-        totalArea * (parseFloat(pricingData.ratePerSqFt) || 0);
-      const billedLawnPrice = rawLawnCost < 50 ? 50 : rawLawnCost;
-
       const { error } = await supabase.from("estimates").insert([
         {
           name: customer.name,
@@ -577,14 +586,13 @@ function CompleteEstimateApp({
           lawn_area: totalArea,
           notes: customer.notes,
           rate_used: parseFloat(pricingData.ratePerSqFt) || 0,
-          // We store the adjusted lawn price to keep records clear
           extra_label: pricingData.customExtra?.active
             ? pricingData.customExtra.label
             : null,
           extra_price: pricingData.customExtra?.active
             ? parseFloat(pricingData.customExtra.price)
             : 0,
-          // This is the total the customer actually pays (already includes the $50 min)
+          // Using the finalized total from our state
           final_price: pricingData.finalTotal,
         },
       ]);
@@ -709,292 +717,137 @@ function CompleteEstimateApp({
 }
 
 function LawnCalculator({ isLoaded, setTotalArea, totalArea, onLoadClear }) {
-  const [labelPosition, setLabelPosition] = useState(null);
-  const [autocomplete, setAutocomplete] = useState(null);
-  const [mapZoom, setMapZoom] = useState(14);
   const [mapCenter, setMapCenter] = useState({ lat: 26.1224, lng: -80.1373 });
+  const [mapZoom, setMapZoom] = useState(15);
+  const [mapType, setMapType] = useState("roadmap");
+  const [polygons, setPolygons] = useState([]);
+  const [activePath, setActivePath] = useState([]);
+  const [mode, setMode] = useState("view");
   const [mapInstance, setMapInstance] = useState(null);
-  const [mode, setMode] = useState("polygon");
-  const mapRef = useRef(null);
-  const drawRef = useRef(null);
-  const modeSwitcherRef = useRef(null);
+  const [autocomplete, setAutocomplete] = useState(null);
 
-  const onMapLoad = (map) => {
-    console.log("THE MAP HAS LOADED SUCCESSFULLY");
-    setMapInstance(map);
-  };
+  // Used for the "Edit" mode of completed polygons
+  const polygonRefs = useRef([]);
 
-  useEffect(() => {
-    console.log("DEBUG: useEffect Heartbeat", {
-      isLoaded,
-      hasMap: !!mapInstance,
-      hasGeometry: !!window.google?.maps?.geometry,
+  // Calculate total area on every render based on current polygons
+  const calculatedData = useMemo(() => {
+    if (!window.google?.maps?.geometry) return { total: 0, position: null };
+
+    const allPaths =
+      activePath.length > 0 ? [...polygons, activePath] : polygons;
+    let totalSqFt = 0;
+    let firstPoint = null;
+
+    allPaths.forEach((path) => {
+      if (path.length >= 3) {
+        const googlePath = path.map(
+          (p) => new window.google.maps.LatLng(p.lat, p.lng),
+        );
+        const area =
+          window.google.maps.geometry.spherical.computeArea(googlePath);
+        totalSqFt += Math.round(area * 10.7639);
+
+        // Capture the very first point of the first valid polygon for the label
+        if (!firstPoint && path.length > 0) firstPoint = path[0];
+      }
     });
 
-    if (!isLoaded || !mapInstance || !window.google?.maps?.geometry) {
-      console.log("STOP: Dependencies not ready", { isLoaded, mapInstance });
-      return;
-    }
+    return { total: totalSqFt, position: firstPoint };
+  }, [polygons, activePath]);
 
-    const initDraw = () => {
-      console.log("2. initDraw called");
-      if (drawRef.current) {
-        console.log("STOP: drawRef already exists");
-        return;
-      }
-      const mapDiv = document.getElementById("terra-draw-overlay");
-      if (!mapDiv) {
-        console.log("STOP: HTML element terra-draw-overlay not found");
-        return;
-      }
+  // 3. Sync the total back to the parent ONLY when it actually changes
+  useEffect(() => {
+    setTotalArea(calculatedData.total);
+  }, [calculatedData.total, setTotalArea]);
 
-      try {
-        console.log("DEBUG: initDraw is running!");
+  // --- 2. EDITING LOGIC ---
+  const onEdit = useCallback((index) => {
+    const polyRef = polygonRefs.current[index];
+    if (polyRef) {
+      const nextPath = polyRef
+        .getPath()
+        .getArray()
+        .map((latLng) => ({
+          lat: latLng.lat(),
+          lng: latLng.lng(),
+        }));
 
-        const internalGoogleDiv = mapInstance.getDiv();
-        if (internalGoogleDiv && !internalGoogleDiv.id) {
-          internalGoogleDiv.id = "internal-google-map-id";
-        }
-
-        const draw = new TerraDraw({
-          adapter: new TerraDrawGoogleMapsAdapter({
-            map: mapInstance,
-            lib: window.google.maps,
-            coordinatePrecision: 9,
-            container: mapDiv,
-          }),
-          modes: [
-            new TerraDrawPolygonMode({
-              snapping: true,
-              styles: {
-                fillColor: "#27ae60",
-                fillOpacity: 0.4,
-                strokeColor: "#27ae60",
-                strokeWeight: 2,
-              },
-            }),
-            new TerraDrawSelectMode({
-              flags: {
-                polygon: {
-                  draggable: true,
-                  coordinates: {
-                    midpoints: true,
-                    draggable: true,
-                    deletable: true,
-                  },
-                },
-              },
-              styles: {
-                selectedPolygonColor: "rgba(39, 174, 96, 0.3)",
-                selectionPointColor: "#ffffff",
-                selectionPointOutlineColor: "#ff0000",
-                selectionPointWidth: 35,
-                selectionPointOutlineWidth: 6,
-              },
-            }),
-          ],
-        });
-
-        const handleDrawChange = () => {
-          console.log("Map Event Triggered: Calculating Area...");
-          const snapshot = draw.getSnapshot();
-          let newTotalArea = 0;
-          snapshot.forEach((feature) => {
-            if (feature.geometry.type === "Polygon") {
-              const path = feature.geometry.coordinates[0].map((c) => ({
-                lat: c[1],
-                lng: c[0],
-              }));
-              const area =
-                window.google.maps.geometry.spherical.computeArea(path);
-              newTotalArea += Math.round(area * 10.7639);
-              if (path.length > 0)
-                setLabelPosition({ lat: path[0].lat, lng: path[0].lng });
-            }
-          });
-          setTotalArea(newTotalArea);
-        };
-
-        draw.on("ready", () => {
-          console.log("✅ TerraDraw Ready");
-          const overlayElement = document.getElementById("terra-draw-overlay");
-          if (overlayElement) {
-            overlayElement.addEventListener(
-              "mousedown",
-              (e) => {
-                console.log(
-                  "🖱️ Mouse Down on Overlay! Target:",
-                  e.target.tagName,
-                );
-              },
-              true,
-            );
-          }
-          draw.setMode("polygon");
-          draw.on("finish", handleDrawChange);
-          draw.on("change", handleDrawChange);
-          draw.on("select", (id) => {
-            console.log("🎯 FEATURE SELECTED (Internal Event):", id);
-            handleDrawChange();
-          });
-          draw.on("deselect", () => {
-            console.log("⚪ FEATURE DESELECTED (Internal Event)");
-            handleDrawChange();
-          });
-        });
-
-        draw.start();
-        const overlayElement = document.getElementById("terra-draw-overlay");
-        if (overlayElement) {
-          overlayElement.addEventListener(
-            "mousedown",
-            (e) => {
-              console.log(
-                "🖱️ Mouse Down on Overlay! Target:",
-                e.target.tagName,
-              );
-            },
-            true,
-          );
-        }
-        drawRef.current = draw;
-        console.log("🚀 TERRA DRAW STARTED.");
-
-        if (mapDiv) {
-          console.log("📏 Overlay Dimensions Check:", {
-            width: mapDiv.offsetWidth,
-            height: mapDiv.offsetHeight,
-            zIndex: window.getComputedStyle(mapDiv).zIndex,
-            display: window.getComputedStyle(mapDiv).display,
-          });
-        }
-
-        // --- THE SWITCHER ---
-        modeSwitcherRef.current = (targetMode) => {
-          console.log(`Switching TerraDraw to: ${targetMode}`);
-          if (!drawRef.current) return;
-
-          if (targetMode === "select") {
-            // Wake up the overlay
-            const overlay = document.getElementById("terra-draw-overlay");
-            if (overlay) overlay.style.pointerEvents = "auto";
-
-            console.log("🔍 Pointer Events Check:", {
-              overlay: overlay
-                ? window.getComputedStyle(overlay).pointerEvents
-                : "Not Found",
-              canvas: document.querySelector("#terra-draw-overlay canvas")
-                ? window.getComputedStyle(
-                    document.querySelector("#terra-draw-overlay canvas"),
-                  ).pointerEvents
-                : "Canvas Not Found",
-            });
-
-            drawRef.current.setMode("select");
-
-            // 1. LOCK MAP
-            mapInstance.setOptions({
-              gestureHandling: "none",
-              draggable: false,
-            });
-
-            if (drawRef.current.getAdapter()) {
-              drawRef.current.getAdapter().resize();
-            }
-
-            const snapshot = drawRef.current.getSnapshot();
-            if (snapshot.length > 0) {
-              console.log("🔍 Attempting to select ID:", snapshot[0].id);
-              const featureId = snapshot[0].id;
-              drawRef.current.deselectFeature(featureId);
-              setTimeout(() => {
-                drawRef.current.selectFeature(featureId);
-                console.log("✅ Engine refresh and selection complete");
-              }, 150);
-            } else {
-              console.warn("⚠️ No polygons found in snapshot to edit!");
-            }
-          } else {
-            // RESET: Put overlay back to click-through
-            const overlay = document.getElementById("terra-draw-overlay");
-            if (overlay) overlay.style.pointerEvents = "none";
-
-            // 2. UNLOCK MAP
-            mapInstance.setOptions({
-              gestureHandling: "greedy",
-              draggable: true,
-            });
-            drawRef.current.setMode("polygon");
-          }
-        }; // End of modeSwitcherRef
-      } catch (err) {
-        console.error("Terra Draw Init Error:", err);
-      }
-    }; // End of initDraw
-
-    // --- EXECUTION LOGIC ---
-    if (mapInstance && mapInstance.getProjection()) {
-      initDraw();
-    } else {
-      const listener = mapInstance.addListener("projection_changed", () => {
-        initDraw();
-        window.google.maps.event.removeListener(listener);
+      setPolygons((prev) => {
+        const updated = [...prev];
+        updated[index] = nextPath;
+        return updated;
       });
     }
+  }, []);
 
-    return () => {
-      if (drawRef.current) {
-        drawRef.current.stop();
-        drawRef.current = null;
-        modeSwitcherRef.current = null;
-      }
-    };
-  }, [isLoaded, mapInstance, setTotalArea]);
+  // --- 3. DRAWING LOGIC ---
+  const onMapClick = useCallback(
+    (e) => {
+      if (mode !== "draw") return;
+      const newPoint = { lat: e.latLng.lat(), lng: e.latLng.lng() };
+      setActivePath((prev) => [...prev, newPoint]);
+    },
+    [mode],
+  );
+
+  const finishShape = () => {
+    if (activePath.length < 3) {
+      alert("Please click at least 3 points to create an area.");
+      return;
+    }
+    setPolygons((prev) => [...prev, activePath]);
+    setActivePath([]); // Reset active path so you can start a new one elsewhere
+  };
 
   const handleClearAll = useCallback(() => {
-    if (drawRef.current) drawRef.current.clear();
+    setPolygons([]);
+    setActivePath([]);
     setTotalArea(0);
-    setLabelPosition(null);
+    setMode("view");
   }, [setTotalArea]);
 
+  // Connect parent "Reset" button
   useEffect(() => {
     if (onLoadClear) onLoadClear(handleClearAll);
   }, [onLoadClear, handleClearAll]);
 
+  // --- 4. SEARCH & ZOOM ---
   const onPlaceChanged = () => {
     if (autocomplete) {
       const place = autocomplete.getPlace();
       if (place.geometry?.location) {
-        // 1. Center immediately
-        mapInstance.setCenter(place.geometry.location);
-        mapInstance.setMapTypeId("satellite");
-        mapInstance.setTilt(0);
+        const newPos = {
+          lat: place.geometry.location.lat(),
+          lng: place.geometry.location.lng(),
+        };
 
-        // 2. Use a slight delay to ensure the map tiles catch up
-        setTimeout(() => {
-          mapInstance.setZoom(21);
-          setMapZoom(21);
-          // Double-check Satellite again after zoom
+        // 1. Update React State
+        setMapCenter(newPos);
+        setMapType("satellite");
+        setMapZoom(21);
+
+        // 2. Direct Map Instance Manipulation
+        if (mapInstance) {
           mapInstance.setMapTypeId("satellite");
-        }, 350);
-        setMapCenter(place.geometry.location);
+          mapInstance.panTo(newPos);
+
+          // Use a short sequence to ensure it hits the target zoom
+          // Sometimes the 'panTo' animation cancels immediate zoom requests
+          setTimeout(() => {
+            mapInstance.setZoom(21);
+            setMapZoom(21); // Sync state again
+          }, 150);
+        }
       }
     }
   };
 
-  const handleZoomIn = () => {
-    if (mapRef.current) {
-      const currentZoom = mapRef.current.getZoom();
-      if (currentZoom < 21) {
-        mapRef.current.setZoom(currentZoom + 1);
-        setMapZoom(currentZoom + 1);
-      }
-    }
-  };
+  if (!isLoaded) return null;
 
   return (
     <div style={{ borderBottom: "2px solid #eee", paddingBottom: "20px" }}>
       <h3>Step 2: Measure Property</h3>
+
       <div className="measure-bar">
         <div className="search-wrapper">
           <Autocomplete
@@ -1008,67 +861,55 @@ function LawnCalculator({ isLoaded, setTotalArea, totalArea, onLoadClear }) {
             />
           </Autocomplete>
         </div>
-        {/* DRAW BUTTON */}
+
         <button
           type="button"
-          className={`btn-draw ${mode === "polygon" ? "active" : ""}`}
-          onClick={() => {
-            if (modeSwitcherRef.current && mapInstance) {
-              setMode("polygon");
-              // RESTORE MAP NAVIGATION
-              mapInstance.setOptions({
-                gestureHandling: "greedy",
-                draggable: true,
-                draggableCursor: "crosshair",
-              });
-              // Call the stable switcher
-              modeSwitcherRef.current("polygon");
-            }
-          }}
+          className={`btn-draw ${mode === "draw" ? "active" : ""}`}
+          onClick={() => setMode("draw")}
         >
           Draw
         </button>
 
-        {/* EDIT BUTTON */}
+        {/* NEW: Finish Shape Button */}
+        {mode === "draw" && activePath.length > 0 && (
+          <button
+            type="button"
+            onClick={finishShape}
+            style={{
+              backgroundColor: "#8e44ad",
+              color: "white",
+              padding: "10px 15px",
+              borderRadius: "6px",
+              border: "none",
+              fontWeight: "bold",
+              cursor: "pointer",
+              marginLeft: "10px",
+            }}
+          >
+            Finish Section
+          </button>
+        )}
+
         <button
           type="button"
-          className={`btn-edit ${mode === "select" ? "active" : ""}`}
-          onClick={() => {
-            console.log("Button Clicked!");
-            console.log("mapInstance exists:", !!mapInstance);
-            console.log("modeSwitcher exists:", !!modeSwitcherRef.current);
-            if (modeSwitcherRef.current && mapInstance) {
-              setMode("select");
-              mapInstance.setOptions({
-                gestureHandling: "none",
-                draggable: false,
-              });
-              modeSwitcherRef.current("select");
-            } else {
-              console.warn("Conditions not met to enter Edit mode.");
-            }
-          }}
+          className={`btn-edit ${mode === "edit" ? "active" : ""}`}
+          onClick={() => setMode("edit")}
         >
           Edit
         </button>
-        <button type="button" className="btn-zoom" onClick={handleZoomIn}>
-          +
-        </button>
+
         <button type="button" className="btn-clear" onClick={handleClearAll}>
           Clear
         </button>
       </div>
 
-      <div
-        id="map-canvas-container"
-        className={`map-container ${mode === "select" ? "edit-mode-active" : ""}`}
-        style={{ position: "relative" }} // Ensures the overlay aligns perfectly
-      >
+      <div className="map-container">
         <GoogleMap
-          onLoad={onMapLoad}
+          onLoad={setMapInstance}
           zoom={mapZoom}
+          mapTypeId={mapType}
           center={mapCenter}
-          mapTypeId="satellite"
+          onClick={onMapClick}
           mapContainerStyle={{
             height: "100%",
             width: "100%",
@@ -1076,39 +917,58 @@ function LawnCalculator({ isLoaded, setTotalArea, totalArea, onLoadClear }) {
           }}
           options={{
             tilt: 0,
+            maxZoom: 22,
+            gestureHandling: "greedy",
             streetViewControl: false,
-            maxZoom: 21,
             mapTypeControl: true,
-            clickableIcons: false,
+            draggableCursor: mode === "draw" ? "crosshair" : "grab",
           }}
         >
-          {totalArea > 0 && labelPosition && (
+          {/* 1. Render Completed Polygons */}
+          {polygons.map((polyPath, index) => (
+            <Polygon
+              key={index}
+              path={polyPath}
+              onLoad={(poly) => (polygonRefs.current[index] = poly)}
+              onEdit={() => onEdit(index)}
+              onDragEnd={() => onEdit(index)}
+              onMouseUp={() => onEdit(index)}
+              editable={mode === "edit"}
+              draggable={mode === "edit"}
+              options={{
+                fillColor: "#27ae60",
+                fillOpacity: 0.4,
+                strokeColor: "#27ae60",
+                strokeWeight: 2,
+              }}
+            />
+          ))}
+
+          {/* 2. Render the Active (un-finished) Path */}
+          {activePath.length > 0 && (
+            <Polygon
+              path={activePath}
+              options={{
+                fillColor: "#f1c40f", // Yellow so user knows it's not "done"
+                fillOpacity: 0.3,
+                strokeColor: "#f1c40f",
+                strokeWeight: 2,
+              }}
+            />
+          )}
+
+          {/* 3. The Big Square Foot Label */}
+          {calculatedData.total > 0 && calculatedData.position && (
             <OverlayView
-              position={labelPosition}
+              position={calculatedData.position}
               mapPaneName={OverlayView.FLOAT_PANE}
             >
               <div className="area-label">
-                {totalArea.toLocaleString()} sq ft
+                {calculatedData.total.toLocaleString()} sq ft
               </div>
             </OverlayView>
           )}
         </GoogleMap>
-
-        {/* THE FIX: Dedicated Terra Draw Layer */}
-        <div
-          id="terra-draw-overlay"
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            width: "100%",
-            height: "100%",
-            pointerEvents: "none", // Changed to 'auto' via CSS when active
-            zIndex: 10,
-            borderRadius: "12px",
-            overflow: "hidden",
-          }}
-        />
       </div>
     </div>
   );
