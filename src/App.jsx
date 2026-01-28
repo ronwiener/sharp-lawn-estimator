@@ -716,7 +716,7 @@ function CompleteEstimateApp({
   );
 }
 
-function LawnCalculator({ isLoaded, setTotalArea, totalArea, onLoadClear }) {
+function LawnCalculator({ isLoaded, setTotalArea, onLoadClear }) {
   const [mapCenter, setMapCenter] = useState({ lat: 26.1224, lng: -80.1373 });
   const [mapZoom, setMapZoom] = useState(15);
   const [mapType, setMapType] = useState("roadmap");
