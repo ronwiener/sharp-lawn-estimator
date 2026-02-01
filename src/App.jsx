@@ -31,6 +31,7 @@ export default function LawnBusinessApp() {
     notes: "",
   });
   const [totalArea, setTotalArea] = useState(0);
+  const [searchQuery, setSearchQuery] = useState("");
   const clearMapRef = useRef(null);
   const formRef = useRef(null);
   const estimateRef = useRef(null);
@@ -160,7 +161,12 @@ export default function LawnBusinessApp() {
         formRef={formRef}
         resetApp={resetEverything}
         customer={customer}
-        setCustomer={setCustomer}
+        setCustomer={(newCustomer) => {
+          setCustomer(newCustomer);
+          if (newCustomer.address !== searchQuery) {
+            setSearchQuery(newCustomer.address);
+          }
+        }}
       />
       <div
         ref={estimateRef}
@@ -506,6 +512,7 @@ export default function LawnBusinessApp() {
         setTotalArea={setTotalArea}
         totalArea={totalArea}
         onLoadClear={(fn) => (clearMapRef.current = fn)}
+        externalAddress={searchQuery}
       />
 
       <EstimateCalculator
@@ -716,7 +723,12 @@ function CompleteEstimateApp({
   );
 }
 
-function LawnCalculator({ isLoaded, setTotalArea, onLoadClear }) {
+function LawnCalculator({
+  isLoaded,
+  setTotalArea,
+  onLoadClear,
+  externalAddress,
+}) {
   const [mapCenter, setMapCenter] = useState({ lat: 26.1224, lng: -80.1373 });
   const [mapZoom, setMapZoom] = useState(15);
   const [mapType, setMapType] = useState("roadmap");
@@ -728,6 +740,40 @@ function LawnCalculator({ isLoaded, setTotalArea, onLoadClear }) {
 
   // Used for the "Edit" mode of completed polygons
   const polygonRefs = useRef([]);
+
+  useEffect(() => {
+    // Only trigger if we have a map and the address is likely complete
+    if (
+      isLoaded &&
+      mapInstance &&
+      externalAddress &&
+      externalAddress.length > 10
+    ) {
+      const delayDebounceFn = setTimeout(() => {
+        const geocoder = new window.google.maps.Geocoder();
+        geocoder.geocode({ address: externalAddress }, (results, status) => {
+          if (status === "OK" && results[0]) {
+            const newPos = results[0].geometry.location;
+
+            // Hard move the map
+            mapInstance.setCenter(newPos);
+            mapInstance.setMapTypeId("satellite");
+
+            setMapCenter({ lat: newPos.lat(), lng: newPos.lng() });
+            setMapType("satellite");
+
+            // Force zoom 21
+            setTimeout(() => {
+              mapInstance.setZoom(21);
+              setMapZoom(21);
+            }, 250);
+          }
+        });
+      }, 1500); // 1.5s delay so it doesn't jump while you type
+
+      return () => clearTimeout(delayDebounceFn);
+    }
+  }, [externalAddress, isLoaded, mapInstance]);
 
   // Calculate total area on every render based on current polygons
   const calculatedData = useMemo(() => {
@@ -815,29 +861,24 @@ function LawnCalculator({ isLoaded, setTotalArea, onLoadClear }) {
   const onPlaceChanged = () => {
     if (autocomplete) {
       const place = autocomplete.getPlace();
-      if (place.geometry?.location) {
-        const newPos = {
-          lat: place.geometry.location.lat(),
-          lng: place.geometry.location.lng(),
-        };
+      if (place && place.geometry?.location) {
+        const newPos = place.geometry.location;
 
-        // 1. Update React State
-        setMapCenter(newPos);
-        setMapType("satellite");
-        setMapZoom(21);
-
-        // 2. Direct Map Instance Manipulation
         if (mapInstance) {
+          // Use setCenter instead of panTo for a "hard" move
+          mapInstance.setCenter(newPos);
           mapInstance.setMapTypeId("satellite");
-          mapInstance.panTo(newPos);
 
-          // Use a short sequence to ensure it hits the target zoom
-          // Sometimes the 'panTo' animation cancels immediate zoom requests
+          // Use a slightly longer timeout to ensure the map has finished
+          // centering before applying the heavy zoom level 21
           setTimeout(() => {
             mapInstance.setZoom(21);
-            setMapZoom(21); // Sync state again
-          }, 150);
+            setMapZoom(21);
+          }, 200);
         }
+
+        setMapCenter({ lat: newPos.lat(), lng: newPos.lng() });
+        setMapType("satellite");
       }
     }
   };
@@ -858,6 +899,10 @@ function LawnCalculator({ isLoaded, setTotalArea, onLoadClear }) {
               type="text"
               placeholder="Search Address..."
               className="search-input"
+              value={externalAddress || ""}
+              onChange={(e) => {
+                /* Autocomplete handles internal typing */
+              }}
             />
           </Autocomplete>
         </div>
