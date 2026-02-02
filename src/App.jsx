@@ -32,6 +32,12 @@ export default function LawnBusinessApp() {
   });
   const [totalArea, setTotalArea] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
+  const [previewData, setPreviewData] = useState({
+    open: false,
+    pdfBased64: "",
+    blobUrl: "",
+  });
+  const [isSending, setIsSending] = useState(false);
   const clearMapRef = useRef(null);
   const formRef = useRef(null);
   const estimateRef = useRef(null);
@@ -76,15 +82,15 @@ export default function LawnBusinessApp() {
     if (!element) return;
 
     try {
+      // Create clone for capturing
       const clone = element.cloneNode(true);
 
-      // CRITICAL: Ensure inputs/text match current state in the clone
-      // Since clones don't always carry over dynamic React text updates perfectly
+      // 1. Manual Sync for the clone (ensures text is accurate)
       const cloneName = clone.querySelector('p[style*="font-weight: bold"]');
       if (cloneName) cloneName.innerText = customer.name || "Valued Customer";
 
+      // 2. Format specifically for the Customer version
       if (type === "customer") {
-        // Hide Details and Amount columns
         const allRows = clone.querySelectorAll("tr");
         allRows.forEach((row) => {
           const cells = row.querySelectorAll("th, td");
@@ -92,42 +98,40 @@ export default function LawnBusinessApp() {
           if (cells[2]) cells[2].style.display = "none";
         });
 
-        // Hide Subtotal in total block
         const subtotalLine = clone.querySelector(
           "div[style*='background-color: #f8f9fa'] div:first-child",
         );
         if (subtotalLine) subtotalLine.style.display = "none";
       }
 
-      // Capture and Generate PDF with Dynamic Height
+      // 3. Render settings for html2canvas
       Object.assign(clone.style, {
         position: "absolute",
         top: "-9999px",
         left: "0",
         width: "800px",
-        height: "auto", // Let it grow
+        height: "auto",
         display: "block",
         overflow: "visible",
       });
 
       document.body.appendChild(clone);
-
       await new Promise((resolve) => setTimeout(resolve, 50));
 
       const canvas = await html2canvas(clone, {
         scale: 1.5,
         useCORS: true,
         backgroundColor: "#ffffff",
-        windowWidth: 800, // Lock width
-        height: clone.offsetHeight, // Use offsetHeight to capture the full expanded notes
+        windowWidth: 800,
+        height: clone.offsetHeight,
       });
 
       document.body.removeChild(clone);
 
+      // 4. Generate the PDF Object
       const imgData = canvas.toDataURL("image/jpeg", 0.7);
       const pdf = new jsPDF("p", "mm", "a4");
       const pdfWidth = pdf.internal.pageSize.getWidth();
-      // Calculate height proportionally so it doesn't compress
       const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
 
       pdf.addImage(
@@ -141,15 +145,63 @@ export default function LawnBusinessApp() {
         "FAST",
       );
 
-      // Sanitize filename
-      const safeName = (customer.name || "Customer")
-        .trim()
-        .replace(/[^a-z0-9]/gi, "_");
-      pdf.save(
-        `${type === "sharp" ? "Sharp" : "Customer"}_Estimate_${safeName}.pdf`,
-      );
+      // 5. BRANCHING LOGIC: Preview vs Download
+      if (type === "customer") {
+        if (!customer.email) {
+          alert("Please enter a customer email address first.");
+          return;
+        }
+
+        // Generate the PDF as a Blob URL for the preview window
+        const blobUrl = pdf.output("bloburl");
+        // Generate the PDF as a Base64 string for the email attachment
+        const pdfBase64 = pdf.output("datauristring").split(",")[1];
+
+        setPreviewData({
+          open: true,
+          pdfBase64,
+          blobUrl,
+        });
+      } else {
+        // Sharp PDF: Download immediately as before
+        const safeName = (customer.name || "Customer")
+          .trim()
+          .replace(/[^a-z0-9]/gi, "_");
+        pdf.save(`Sharp_Estimate_${safeName}.pdf`);
+      }
     } catch (err) {
-      console.error("PDF Error:", err);
+      console.error("PDF Generation Error:", err);
+    }
+  };
+
+  const confirmAndSendEmail = async () => {
+    if (!customer.email) return;
+    setIsSending(true);
+
+    try {
+      const response = await fetch("/.netlify/functions/send-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: customer.email,
+          customerName: customer.name || "Valued Customer",
+          address: customer.address || "your property",
+          pdfBase64: previewData.pdfBase64,
+        }),
+      });
+
+      if (response.ok) {
+        alert("Success! Estimate sent to " + customer.email);
+        setPreviewData({ open: false, pdfBase64: "", blobUrl: "" });
+      } else {
+        const errData = await response.json();
+        alert("Failed to send: " + (errData.error || "Unknown error"));
+      }
+    } catch (err) {
+      console.error("Email Error:", err);
+      alert("System error connecting to email service.");
+    } finally {
+      setIsSending(false);
     }
   };
   return (
@@ -567,6 +619,62 @@ export default function LawnBusinessApp() {
           Save & Store Estimate: ${pricingData.finalTotal.toFixed(2)}
         </button>
       </div>
+
+      {previewData.open && (
+        <div className="preview-overlay">
+          <div className="preview-modal">
+            <div
+              style={{
+                padding: "10px 20px",
+                borderBottom: "1px solid #eee",
+                textAlign: "left",
+              }}
+            >
+              <h3 style={{ margin: 0 }}>Review Customer Estimate</h3>
+              <p style={{ margin: "5px 0", color: "#666" }}>
+                Sending to: <strong>{customer.email}</strong>
+              </p>
+            </div>
+
+            <div style={{ height: "500px", backgroundColor: "#f0f0f0" }}>
+              <iframe
+                src={previewData.blobUrl}
+                title="PDF Preview"
+                width="100%"
+                height="100%"
+                style={{ border: "none" }}
+              />
+            </div>
+
+            <div
+              className="preview-actions"
+              style={{
+                padding: "20px",
+                textAlign: "right",
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: "10px",
+              }}
+            >
+              <button
+                className="btn-cancel"
+                onClick={() =>
+                  setPreviewData({ open: false, blobUrl: "", pdfBase64: "" })
+                }
+              >
+                Cancel
+              </button>
+              <button
+                className="btn-confirm-send"
+                disabled={isSending}
+                onClick={confirmAndSendEmail}
+              >
+                {isSending ? "Sending..." : "Confirm & Send Email"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

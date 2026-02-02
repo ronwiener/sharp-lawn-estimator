@@ -159,6 +159,64 @@
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
 }
 
+/* MODAL CSS */
+
+/* Cancel Button Styles */
+.btn-cancel {
+  background-color: #f5b7b1; /* Light Red */
+  color: #7b241c; /* Dark Red text for high contrast */
+  padding: 10px 20px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: all 0.2s ease;
+}
+
+.btn-cancel:hover {
+  background-color: #e74c3c; /* Bright Red */
+  color: white; /* Switches to white when background is dark enough */
+}
+
+/* Confirm Button Styles */
+.btn-confirm-send {
+  background-color: #a9dfbf; /* Light Green */
+  color: #145a32; /* Dark Green text for high contrast */
+  padding: 10px 20px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: all 0.2s ease;
+}
+
+.btn-confirm-send:hover {
+  background-color: #27ae60 !important; /* Added !important to force the fix */
+  color: white !important;
+}
+
+.preview-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.preview-modal {
+  background: white;
+  padding: 20px;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 700px;
+  text-align: center;
+}
+
 /* --- MOBILE RESPONSIVENESS --- */
 @media (max-width: 600px) {
   .customer-grid {
