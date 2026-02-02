@@ -499,7 +499,7 @@ export default function LawnBusinessApp() {
             }}
           >
             <strong>
-              Estimate valid for 30 days. Thank you for choosing Sharp Lawn
+              Estimate valid for 7 days. Thank you for choosing Sharp Lawn
               Mowing!
             </strong>
           </div>
