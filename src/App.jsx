@@ -32,12 +32,6 @@ export default function LawnBusinessApp() {
   });
   const [totalArea, setTotalArea] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
-  const [previewData, setPreviewData] = useState({
-    open: false,
-    pdfBased64: "",
-    blobUrl: "",
-  });
-  const [isSending, setIsSending] = useState(false);
   const clearMapRef = useRef(null);
   const formRef = useRef(null);
   const estimateRef = useRef(null);
@@ -82,38 +76,8 @@ export default function LawnBusinessApp() {
     if (!element) return;
 
     try {
-      // Create clone for capturing
       const clone = element.cloneNode(true);
-
-      // 1. Manual Sync for the clone (ensures text is accurate)
-      const cloneName = clone.querySelector('p[style*="font-weight: bold"]');
-      if (cloneName) cloneName.innerText = customer.name || "Valued Customer";
-
-      // 2. Format specifically for the Customer version
-      if (type === "customer") {
-        const allRows = clone.querySelectorAll("tr");
-        allRows.forEach((row) => {
-          const cells = row.querySelectorAll("th, td");
-          if (cells[1]) cells[1].style.display = "none";
-          if (cells[2]) cells[2].style.display = "none";
-        });
-
-        const subtotalLine = clone.querySelector(
-          "div[style*='background-color: #f8f9fa'] div:first-child",
-        );
-        if (subtotalLine) subtotalLine.style.display = "none";
-      }
-
-      // 3. Render settings for html2canvas
-      Object.assign(clone.style, {
-        position: "absolute",
-        top: "-9999px",
-        left: "0",
-        width: "800px",
-        height: "auto",
-        display: "block",
-        overflow: "visible",
-      });
+      // ... (keep your existing clone sync and formatting logic) ...
 
       document.body.appendChild(clone);
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -128,7 +92,6 @@ export default function LawnBusinessApp() {
 
       document.body.removeChild(clone);
 
-      // 4. Generate the PDF Object
       const imgData = canvas.toDataURL("image/jpeg", 0.7);
       const pdf = new jsPDF("p", "mm", "a4");
       const pdfWidth = pdf.internal.pageSize.getWidth();
@@ -145,65 +108,23 @@ export default function LawnBusinessApp() {
         "FAST",
       );
 
-      // 5. BRANCHING LOGIC: Preview vs Download
+      // --- UPDATED BRANCHING LOGIC ---
+      const safeName = (customer.name || "Customer")
+        .trim()
+        .replace(/[^a-z0-9]/gi, "_");
+
       if (type === "customer") {
-        if (!customer.email) {
-          alert("Please enter a customer email address first.");
-          return;
-        }
-
-        // Generate the PDF as a Blob URL for the preview window
-        const blobUrl = pdf.output("bloburl");
-        // Generate the PDF as a Base64 string for the email attachment
-        const pdfBase64 = pdf.output("datauristring").split(",")[1];
-
-        setPreviewData({
-          open: true,
-          pdfBase64,
-          blobUrl,
-        });
+        // Direct Download for Customer Version
+        pdf.save(`Estimate_${safeName}.pdf`);
       } else {
-        // Sharp PDF: Download immediately as before
-        const safeName = (customer.name || "Customer")
-          .trim()
-          .replace(/[^a-z0-9]/gi, "_");
-        pdf.save(`Sharp_Estimate_${safeName}.pdf`);
+        // Direct Download for Sharp Version
+        pdf.save(`Sharp_Internal_${safeName}.pdf`);
       }
     } catch (err) {
       console.error("PDF Generation Error:", err);
     }
   };
 
-  const confirmAndSendEmail = async () => {
-    if (!customer.email) return;
-    setIsSending(true);
-
-    try {
-      const response = await fetch("/.netlify/functions/send-email", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: customer.email,
-          customerName: customer.name || "Valued Customer",
-          address: customer.address || "your property",
-          pdfBase64: previewData.pdfBase64,
-        }),
-      });
-
-      if (response.ok) {
-        alert("Success! Estimate sent to " + customer.email);
-        setPreviewData({ open: false, pdfBase64: "", blobUrl: "" });
-      } else {
-        const errData = await response.json();
-        alert("Failed to send: " + (errData.error || "Unknown error"));
-      }
-    } catch (err) {
-      console.error("Email Error:", err);
-      alert("System error connecting to email service.");
-    } finally {
-      setIsSending(false);
-    }
-  };
   return (
     <div className="container">
       {/* EVERYTHING INSIDE THIS DIV GOES TO THE PDF */}
@@ -326,6 +247,31 @@ export default function LawnBusinessApp() {
               <p style={{ margin: 0, color: "#555" }}>
                 {customer.address || "Service Address"}
               </p>
+              {/* Display Email if it exists */}
+              {customer.email && (
+                <p
+                  style={{
+                    margin: "2px 0 0 0",
+                    color: "#555",
+                    fontSize: "14px",
+                  }}
+                >
+                  {customer.email}
+                </p>
+              )}
+
+              {/* Display Phone if it exists */}
+              {customer.phone && (
+                <p
+                  style={{
+                    margin: "2px 0 0 0",
+                    color: "#555",
+                    fontSize: "14px",
+                  }}
+                >
+                  {customer.phone}
+                </p>
+              )}
             </div>
             <div style={{ textAlign: "right" }}>
               <h4
@@ -535,25 +481,77 @@ export default function LawnBusinessApp() {
             </div>
           )}
 
-          {/* VALID FOR 30 DAYS DISCLAIMER */}
+          {/* PROFESSIONAL CONTACT FOOTER */}
           <div
-            id="pdf-disclaimer"
+            id="pdf-footer"
             style={{
-              marginTop: "50px",
+              marginTop: "40px",
               paddingTop: "20px",
-              borderTop: "1px solid #eee",
-              textAlign: "center",
-              fontSize: "14px",
-              color: "#555",
-              width: "100%",
-              clear: "both",
-              fontStyle: "italic",
+              borderTop: "2px solid #27ae60",
+              display: "flex",
+              justifyContent: "space-between",
+              fontSize: "13px",
+              color: "#2c3e50",
             }}
           >
-            <strong>
-              Estimate valid for 7 days. Thank you for choosing Sharp Lawn
-              Mowing!
-            </strong>
+            <div style={{ flex: 1 }}>
+              <strong
+                style={{
+                  color: "#27ae60",
+                  textTransform: "uppercase",
+                  display: "block",
+                  marginBottom: "5px",
+                }}
+              >
+                Contact Us
+              </strong>
+              <div>📞 (954) 787-8150</div>{" "}
+              {/* Replace with your actual phone */}
+              <div>📧 sharplawnmowing@gmail.com</div>
+            </div>
+
+            <div style={{ flex: 1, textAlign: "center" }}>
+              <strong
+                style={{
+                  color: "#27ae60",
+                  textTransform: "uppercase",
+                  display: "block",
+                  marginBottom: "5px",
+                }}
+              >
+                Service Location
+              </strong>
+              <div>{customer.address || "Property Address"}</div>
+            </div>
+
+            <div style={{ flex: 1, textAlign: "right" }}>
+              <strong
+                style={{
+                  color: "#27ae60",
+                  textTransform: "uppercase",
+                  display: "block",
+                  marginBottom: "5px",
+                }}
+              >
+                Next Steps
+              </strong>
+              <div>Reply to this email or call to schedule.</div>
+              <div style={{ fontStyle: "italic", marginTop: "5px" }}>
+                Valid for 7 days.
+              </div>
+            </div>
+          </div>
+
+          {/* FINAL THANK YOU LINE */}
+          <div
+            style={{
+              textAlign: "center",
+              marginTop: "20px",
+              fontSize: "12px",
+              color: "#bdc3c7",
+            }}
+          >
+            Thank you for the opportunity to earn your business!
           </div>
         </div>
       </div>
@@ -590,7 +588,7 @@ export default function LawnBusinessApp() {
               boxShadow: "0 2px 5px rgba(0,0,0,0.1)",
             }}
           >
-            Sharp PDF
+            Download Sharp PDF
           </button>
           <button
             onClick={() => downloadPDF("customer")}
@@ -607,7 +605,7 @@ export default function LawnBusinessApp() {
               boxShadow: "0 2px 5px rgba(0,0,0,0.1)",
             }}
           >
-            Customer PDF
+            Download Customer PDF
           </button>
         </div>
 
@@ -619,62 +617,6 @@ export default function LawnBusinessApp() {
           Save & Store Estimate: ${pricingData.finalTotal.toFixed(2)}
         </button>
       </div>
-
-      {previewData.open && (
-        <div className="preview-overlay">
-          <div className="preview-modal">
-            <div
-              style={{
-                padding: "10px 20px",
-                borderBottom: "1px solid #eee",
-                textAlign: "left",
-              }}
-            >
-              <h3 style={{ margin: 0 }}>Review Customer Estimate</h3>
-              <p style={{ margin: "5px 0", color: "#666" }}>
-                Sending to: <strong>{customer.email}</strong>
-              </p>
-            </div>
-
-            <div style={{ height: "500px", backgroundColor: "#f0f0f0" }}>
-              <iframe
-                src={previewData.blobUrl}
-                title="PDF Preview"
-                width="100%"
-                height="100%"
-                style={{ border: "none" }}
-              />
-            </div>
-
-            <div
-              className="preview-actions"
-              style={{
-                padding: "20px",
-                textAlign: "right",
-                display: "flex",
-                justifyContent: "flex-end",
-                gap: "10px",
-              }}
-            >
-              <button
-                className="btn-cancel"
-                onClick={() =>
-                  setPreviewData({ open: false, blobUrl: "", pdfBase64: "" })
-                }
-              >
-                Cancel
-              </button>
-              <button
-                className="btn-confirm-send"
-                disabled={isSending}
-                onClick={confirmAndSendEmail}
-              >
-                {isSending ? "Sending..." : "Confirm & Send Email"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
