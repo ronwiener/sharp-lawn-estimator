@@ -77,49 +77,68 @@ export default function LawnBusinessApp() {
 
     try {
       const clone = element.cloneNode(true);
-      // ... (keep your existing clone sync and formatting logic) ...
+
+      // --- CUSTOMER-ONLY HIDING LOGIC ---
+      if (type === "customer") {
+        // 1. Hide the itemized middle column (Details) and right column (Rate calculation)
+        // This targets the <th> and <td> elements in the table
+        const allRows = clone.querySelectorAll("tr");
+        allRows.forEach((row) => {
+          const cells = row.querySelectorAll("th, td");
+          // Hide the "Details" column (index 1) which shows the sq ft calculation
+          if (cells[1])
+            cells[1].style.setProperty("display", "none", "important");
+        });
+
+        // 2. Hide the subtotal breakdown in the bottom block if it shows sq ft math
+        // This targets the specific subtotal line inside your total block
+        const subtotalContainer = clone.querySelector(
+          "div[style*='background-color: #f8f9fa']",
+        );
+        if (subtotalContainer) {
+          const subtotalLine =
+            subtotalContainer.querySelector("div:first-child");
+          if (subtotalLine) subtotalLine.style.display = "none";
+        }
+      }
+
+      // Standard Render Settings
+      Object.assign(clone.style, {
+        position: "absolute",
+        top: "-9999px",
+        left: "0",
+        width: "800px",
+        height: "auto",
+        display: "block",
+      });
 
       document.body.appendChild(clone);
       await new Promise((resolve) => setTimeout(resolve, 50));
 
       const canvas = await html2canvas(clone, {
-        scale: 1.5,
+        scale: 2, // Higher scale for better PDF quality
         useCORS: true,
         backgroundColor: "#ffffff",
-        windowWidth: 800,
-        height: clone.offsetHeight,
       });
 
       document.body.removeChild(clone);
 
-      const imgData = canvas.toDataURL("image/jpeg", 0.7);
+      const imgData = canvas.toDataURL("image/jpeg", 0.8);
       const pdf = new jsPDF("p", "mm", "a4");
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
 
-      pdf.addImage(
-        imgData,
-        "JPEG",
-        0,
-        0,
-        pdfWidth,
-        pdfHeight,
-        undefined,
-        "FAST",
-      );
+      pdf.addImage(imgData, "JPEG", 0, 0, pdfWidth, pdfHeight);
 
-      // --- UPDATED BRANCHING LOGIC ---
       const safeName = (customer.name || "Customer")
         .trim()
         .replace(/[^a-z0-9]/gi, "_");
+      const fileName =
+        type === "sharp"
+          ? `Sharp_Internal_${safeName}.pdf`
+          : `Estimate_${safeName}.pdf`;
 
-      if (type === "customer") {
-        // Direct Download for Customer Version
-        pdf.save(`Estimate_${safeName}.pdf`);
-      } else {
-        // Direct Download for Sharp Version
-        pdf.save(`Sharp_Internal_${safeName}.pdf`);
-      }
+      pdf.save(fileName);
     } catch (err) {
       console.error("PDF Generation Error:", err);
     }
