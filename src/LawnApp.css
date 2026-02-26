@@ -72,6 +72,10 @@
   transform: translateY(1px);
   border: 2px solid white;
 }
+.btn-finish {
+  background-color: #27ae60 !important;
+  color: white !important;
+}
 
 /* Base Edit Button */
 .btn-edit {

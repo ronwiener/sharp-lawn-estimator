@@ -752,6 +752,20 @@ function LawnCalculator({
   const [mode, setMode] = useState("view");
   const [autocomplete, setAutocomplete] = useState(null);
 
+  useEffect(() => {
+    if (isLoaded && mapInstance && externalAddress && window.google) {
+      const geocoder = new window.google.maps.Geocoder();
+      geocoder.geocode({ address: externalAddress }, (results, status) => {
+        if (status === "OK" && results[0]) {
+          const location = results[0].geometry.location;
+          mapInstance.setCenter(location);
+          mapInstance.setMapTypeId("satellite");
+          mapInstance.setZoom(21); // Zoom in close for measuring
+        }
+      });
+    }
+  }, [externalAddress, isLoaded, mapInstance]);
+
   // --- MISSING FUNCTION ADDED HERE ---
   const finishShape = () => {
     if (activePath.length < 3) {
@@ -854,12 +868,17 @@ function LawnCalculator({
             ])
           }
           mapContainerStyle={{ height: "100%", width: "100%" }}
-          options={{ tilt: 0, mapTypeId: "satellite" }}
+          options={{ tilt: 0, maxZoom: 22, mapTypeId: "satellite" }}
         >
           {polygons.map((p, i) => (
             <Polygon
               key={i}
               path={p}
+              editable={mode === "edit"}
+              draggable={mode === "edit"}
+              onMouseUp={() => {
+                /* Optional: Save the new shape positions here if you want to keep edits */
+              }}
               options={{
                 fillColor: "#27ae60",
                 fillOpacity: 0.4,
