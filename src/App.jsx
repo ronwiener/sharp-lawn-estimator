@@ -317,7 +317,14 @@ export default function LawnBusinessApp() {
                   <td style={{ padding: "12px" }}>
                     <strong>Lawn Mowing & Maintenance</strong>
                   </td>
-                  <td style={{ textAlign: "right", padding: "12px" }}>
+                  <td
+                    style={{ textAlign: "right", padding: "12px" }}
+                    className="sqft-detail"
+                  >
+                    {/* This span will be removed ONLY in the customer PDF */}
+                    <span className="internal-only">
+                      {totalArea.toLocaleString()} sq ft
+                    </span>
                     {onlyMowing && rawLawnCost < 50
                       ? "Min. Charge"
                       : "Standard Rate"}
@@ -742,38 +749,67 @@ function CompleteEstimateApp({
 function LawnCalculator({
   isLoaded,
   setTotalArea,
-  onLoadClear,
+  totalArea,
   externalAddress,
 }) {
-  const [mapCenter, setMapCenter] = useState({ lat: 26.1224, lng: -80.1373 });
   const [mapInstance, setMapInstance] = useState(null);
   const [polygons, setPolygons] = useState([]);
   const [activePath, setActivePath] = useState([]);
   const [mode, setMode] = useState("view");
   const [autocomplete, setAutocomplete] = useState(null);
 
-  useEffect(() => {
-    if (isLoaded && mapInstance && externalAddress && window.google) {
-      const geocoder = new window.google.maps.Geocoder();
-      geocoder.geocode({ address: externalAddress }, (results, status) => {
-        if (status === "OK" && results[0]) {
-          const location = results[0].geometry.location;
-          mapInstance.setCenter(location);
-          mapInstance.setMapTypeId("satellite");
-          mapInstance.setZoom(21); // Zoom in close for measuring
-        }
-      });
-    }
-  }, [externalAddress, isLoaded, mapInstance]);
+  const [mapViewport, setMapViewport] = useState({
+    lat: 26.1224,
+    lng: -80.1373,
+  });
+  const [zoomLevel, setZoomLevel] = useState(15);
 
-  // --- MISSING FUNCTION ADDED HERE ---
-  const finishShape = () => {
-    if (activePath.length < 3) {
-      alert("Please click at least 3 points to create an area.");
-      return;
+  const focusMap = useCallback(
+    (location) => {
+      if (!mapInstance || !location) return;
+      const newPos = { lat: location.lat(), lng: location.lng() };
+
+      // 1. Update the state first so the component knows the new "default"
+      setMapViewport(newPos);
+      setZoomLevel(21);
+
+      // 2. Use a tiny timeout to let React finish its render cycle,
+      // then force the physical map instance to the exact zoom/position.
+      setTimeout(() => {
+        mapInstance.setCenter(newPos);
+        mapInstance.setZoom(21);
+        mapInstance.setMapTypeId("satellite");
+        mapInstance.setTilt(0);
+      }, 10);
+    },
+    [mapInstance],
+  );
+
+  // Update the useEffect to be more resilient
+  useEffect(() => {
+    // Only trigger if we have a valid-looking address (more than 5 chars)
+    if (
+      isLoaded &&
+      mapInstance &&
+      externalAddress?.trim().length > 5 &&
+      window.google
+    ) {
+      const geocoder = new window.google.maps.Geocoder();
+      const timeoutId = setTimeout(() => {
+        geocoder.geocode({ address: externalAddress }, (results, status) => {
+          if (status === "OK" && results[0]) {
+            focusMap(results[0].geometry.location);
+          }
+        });
+      }, 1200); // Slightly longer debounce to ensure user is done typing
+      return () => clearTimeout(timeoutId);
     }
+  }, [externalAddress, isLoaded, mapInstance, focusMap]);
+
+  const finishShape = () => {
+    if (activePath.length < 3) return;
     setPolygons((prev) => [...prev, activePath]);
-    setActivePath([]); // Reset path for the next section
+    setActivePath([]);
   };
 
   const handleClearAll = useCallback(() => {
@@ -782,6 +818,19 @@ function LawnCalculator({
     setTotalArea(0);
     setMode("view");
   }, [setTotalArea]);
+
+  const onPolygonEdit = useCallback((index, polygonInstance) => {
+    const newPath = polygonInstance
+      .getPath()
+      .getArray()
+      .map((latLng) => ({ lat: latLng.lat(), lng: latLng.lng() }));
+
+    setPolygons((prev) => {
+      const next = [...prev];
+      next[index] = newPath;
+      return next;
+    });
+  }, []);
 
   const calculatedArea = useMemo(() => {
     if (!window.google?.maps?.geometry) return 0;
@@ -804,50 +853,78 @@ function LawnCalculator({
 
   return (
     <div style={{ borderBottom: "2px solid #eee", paddingBottom: "20px" }}>
-      <h3>Step 2: Measure Property</h3>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: "10px",
+        }}
+      >
+        <h3>Step 2: Measure Property</h3>
+        <div
+          style={{
+            padding: "10px",
+            backgroundColor: "#f0fff4",
+            border: "1px solid #27ae60",
+            borderRadius: "8px",
+            color: "#27ae60",
+            fontWeight: "bold",
+          }}
+        >
+          Total Area: {(totalArea || 0).toLocaleString()} sq ft
+        </div>
+      </div>
 
-      <div className="measure-bar">
+      <div
+        className="measure-bar"
+        style={{
+          marginBottom: "15px",
+          display: "flex",
+          gap: "10px",
+          flexWrap: "wrap",
+        }}
+      >
         <Autocomplete
           onLoad={setAutocomplete}
           onPlaceChanged={() => {
             const place = autocomplete.getPlace();
-            if (place.geometry) {
-              mapInstance.setCenter(place.geometry.location);
-              mapInstance.setMapTypeId("satellite");
-              mapInstance.setZoom(21);
-            }
+            if (place.geometry) focusMap(place.geometry.location);
           }}
         >
           <input
             type="text"
             placeholder="Search Address..."
             className="search-input"
+            style={{ padding: "10px", width: "250px" }}
           />
         </Autocomplete>
 
         <button
-          type="button"
           className={`btn-draw ${mode === "draw" ? "active" : ""}`}
           onClick={() => setMode("draw")}
         >
-          Draw
+          Draw Mode
         </button>
 
         {mode === "draw" && activePath.length > 0 && (
-          <button type="button" className="btn-finish" onClick={finishShape}>
+          <button
+            className="btn-finish"
+            onClick={finishShape}
+            style={{ backgroundColor: "#27ae60", color: "white" }}
+          >
             Finish Section
           </button>
         )}
 
         <button
-          type="button"
           className={`btn-edit ${mode === "edit" ? "active" : ""}`}
-          onClick={() => setMode("edit")}
+          onClick={() => setMode(mode === "edit" ? "view" : "edit")}
         >
-          Edit
+          {mode === "edit" ? "Save/Done" : "Edit"}
         </button>
 
-        <button type="button" className="btn-clear" onClick={handleClearAll}>
+        <button className="btn-clear" onClick={handleClearAll}>
           Clear Map
         </button>
       </div>
@@ -858,17 +935,26 @@ function LawnCalculator({
       >
         <GoogleMap
           onLoad={setMapInstance}
-          zoom={15}
-          center={mapCenter}
-          onClick={(e) =>
-            mode === "draw" &&
-            setActivePath([
-              ...activePath,
-              { lat: e.latLng.lat(), lng: e.latLng.lng() },
-            ])
+          zoom={zoomLevel}
+          center={mapViewport}
+          onZoomChanged={() =>
+            mapInstance && setZoomLevel(mapInstance.getZoom())
           }
+          onClick={(e) => {
+            if (mode === "draw") {
+              setActivePath([
+                ...activePath,
+                { lat: e.latLng.lat(), lng: e.latLng.lng() },
+              ]);
+            }
+          }}
           mapContainerStyle={{ height: "100%", width: "100%" }}
-          options={{ tilt: 0, maxZoom: 22, mapTypeId: "satellite" }}
+          options={{
+            tilt: 0,
+            maxZoom: 22,
+            mapTypeId: "satellite",
+            gestureHandling: mode === "draw" ? "none" : "greedy",
+          }}
         >
           {polygons.map((p, i) => (
             <Polygon
@@ -876,8 +962,11 @@ function LawnCalculator({
               path={p}
               editable={mode === "edit"}
               draggable={mode === "edit"}
-              onMouseUp={() => {
-                /* Optional: Save the new shape positions here if you want to keep edits */
+              onMouseUp={function () {
+                onPolygonEdit(i, this);
+              }}
+              onDragEnd={function () {
+                onPolygonEdit(i, this);
               }}
               options={{
                 fillColor: "#27ae60",
