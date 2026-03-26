@@ -769,29 +769,31 @@ function LawnCalculator({
       if (!mapInstance || !location) return;
       const newPos = { lat: location.lat(), lng: location.lng() };
 
-      // 1. Update the state first so the component knows the new "default"
+      // 1. Update React state first
       setMapViewport(newPos);
       setZoomLevel(21);
 
-      // 2. Use a tiny timeout to let React finish its render cycle,
-      // then force the physical map instance to the exact zoom/position.
+      // 2. Force the Map Instance with a slight delay to override React's render
       setTimeout(() => {
-        mapInstance.setCenter(newPos);
-        mapInstance.setZoom(21);
-        mapInstance.setMapTypeId("satellite");
-        mapInstance.setTilt(0);
-      }, 10);
+        if (mapInstance) {
+          mapInstance.setCenter(newPos);
+          mapInstance.setMapTypeId("satellite");
+          mapInstance.setTilt(0);
+          // Calling zoom twice (once now, once in 100ms) ensures it sticks
+          mapInstance.setZoom(21);
+          setTimeout(() => mapInstance.setZoom(21), 100);
+        }
+      }, 50);
     },
     [mapInstance],
   );
 
-  // Update the useEffect to be more resilient
   useEffect(() => {
-    // Only trigger if we have a valid-looking address (more than 5 chars)
+    // Only geocode if the address looks substantial
     if (
       isLoaded &&
       mapInstance &&
-      externalAddress?.trim().length > 5 &&
+      externalAddress?.trim().length > 6 &&
       window.google
     ) {
       const geocoder = new window.google.maps.Geocoder();
@@ -801,7 +803,7 @@ function LawnCalculator({
             focusMap(results[0].geometry.location);
           }
         });
-      }, 1200); // Slightly longer debounce to ensure user is done typing
+      }, 1500); // Wait for user to finish typing
       return () => clearTimeout(timeoutId);
     }
   }, [externalAddress, isLoaded, mapInstance, focusMap]);
@@ -817,6 +819,7 @@ function LawnCalculator({
     setActivePath([]);
     setTotalArea(0);
     setMode("view");
+    setZoomLevel(15);
   }, [setTotalArea]);
 
   const onPolygonEdit = useCallback((index, polygonInstance) => {
@@ -900,6 +903,7 @@ function LawnCalculator({
           />
         </Autocomplete>
 
+        {/* Buttons with restored className logic for CSS styling */}
         <button
           className={`btn-draw ${mode === "draw" ? "active" : ""}`}
           onClick={() => setMode("draw")}
@@ -920,6 +924,7 @@ function LawnCalculator({
         <button
           className={`btn-edit ${mode === "edit" ? "active" : ""}`}
           onClick={() => setMode(mode === "edit" ? "view" : "edit")}
+          style={{ backgroundColor: mode === "edit" ? "#f1c40f" : "" }}
         >
           {mode === "edit" ? "Save/Done" : "Edit"}
         </button>
