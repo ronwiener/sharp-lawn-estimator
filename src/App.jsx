@@ -15,7 +15,6 @@ import {
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import logoImg from "./assets/sharp.JPG";
-import venmoQR from "./assets/venmoQR.PNG";
 import "./LawnApp.css";
 
 const LIBRARIES = Object.freeze(["geometry", "places"]);
@@ -189,33 +188,6 @@ export default function LawnBusinessApp() {
             }}
           />
         </h1>
-
-        <div
-          style={{
-            marginTop: "20px",
-            padding: "15px",
-            backgroundColor: "#f8faff",
-            borderRadius: "8px",
-            border: "1px solid #d1d9e6",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-          }}
-        >
-          <div>
-            <div style={{ fontWeight: "bold", color: "#3d95ce" }}>
-              Venmo Payment Info:
-            </div>
-            <div>
-              User: <strong>@Breck-Wiener</strong>
-            </div>
-          </div>
-          <img
-            src={venmoQR}
-            alt="Venmo QR"
-            style={{ height: "80px", width: "80px" }}
-          />
-        </div>
 
         <div
           style={{
