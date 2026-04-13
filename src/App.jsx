@@ -9,11 +9,9 @@ import {
   GoogleMap,
   Autocomplete,
   useJsApiLoader,
-  OverlayView,
   Polygon,
 } from "@react-google-maps/api";
 
-import { supabase } from "./supabaseClient";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import logoImg from "./assets/sharp.JPG";
@@ -23,6 +21,7 @@ import "./LawnApp.css";
 const LIBRARIES = Object.freeze(["geometry", "places"]);
 
 export default function LawnBusinessApp() {
+  // --- STATE ---
   const [customer, setCustomer] = useState({
     name: "",
     address: "",
@@ -40,14 +39,7 @@ export default function LawnBusinessApp() {
   const [totalArea, setTotalArea] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
   const clearMapRef = useRef(null);
-  const formRef = useRef(null);
   const estimateRef = useRef(null);
-
-  const { isLoaded, loadError } = useJsApiLoader({
-    id: "google-map-script",
-    googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
-    libraries: LIBRARIES,
-  });
 
   const [pricingData, setPricingData] = useState({
     ratePerSqFt: 0.02,
@@ -56,16 +48,24 @@ export default function LawnBusinessApp() {
     cleanupPrice: 0,
   });
 
-  // --- CENTRALIZED PRICING LOGIC ---
-  // This ensures the variables are available to the PDF table and the Calculator
+  // --- GOOGLE MAPS LOADER ---
+  const { isLoaded, loadError } = useJsApiLoader({
+    id: "google-map-script",
+    googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
+    libraries: LIBRARIES,
+  });
+
+  // --- PRICING LOGIC ---
   const onlyMowing =
     activeServices.mowing && !activeServices.shrubs && !activeServices.cleanup;
   const rawLawnCost = totalArea * pricingData.ratePerSqFt;
   const lawnCost = onlyMowing && rawLawnCost < 50 ? 50 : rawLawnCost;
 
+  // --- RESET FUNCTION ---
   const resetEverything = useCallback(() => {
     if (clearMapRef.current) clearMapRef.current();
     setTotalArea(0);
+    setSearchQuery("");
     setCustomer({ name: "", address: "", phone: "", email: "", notes: "" });
     setActiveServices({ mowing: true, shrubs: false, cleanup: false });
     setPricingData({
@@ -87,6 +87,7 @@ export default function LawnBusinessApp() {
       </div>
     );
 
+  // --- PDF GENERATION ---
   const downloadPDF = async (type = "sharp") => {
     const element = estimateRef.current;
     if (!element) return;
@@ -103,7 +104,6 @@ export default function LawnBusinessApp() {
           if (cells[1])
             cells[1].style.setProperty("display", "none", "important");
         });
-
         const subtotalContainer = clone.querySelector(
           "div[style*='background-color: #f8f9fa']",
         );
@@ -141,11 +141,11 @@ export default function LawnBusinessApp() {
       const safeName = (customer.name || "Customer")
         .trim()
         .replace(/[^a-z0-9]/gi, "_");
-      const fileName =
+      pdf.save(
         type === "sharp"
           ? `Sharp_Internal_${safeName}.pdf`
-          : `Estimate_${safeName}.pdf`;
-      pdf.save(fileName);
+          : `Estimate_${safeName}.pdf`,
+      );
     } catch (err) {
       console.error("PDF Generation Error:", err);
     }
@@ -153,13 +153,9 @@ export default function LawnBusinessApp() {
 
   return (
     <div className="container">
-      <CompleteEstimateApp
-        totalArea={totalArea}
-        pricingData={pricingData}
-        formRef={formRef}
-        resetApp={resetEverything}
+      {/* STEP 1: CUSTOMER INFO */}
+      <CustomerInfoForm
         customer={customer}
-        activeServices={activeServices}
         setCustomer={(newCustomer) => {
           setCustomer(newCustomer);
           if (newCustomer.address !== searchQuery)
@@ -167,6 +163,7 @@ export default function LawnBusinessApp() {
         }}
       />
 
+      {/* PDF TEMPLATE CONTAINER */}
       <div
         ref={estimateRef}
         id="estimate-container"
@@ -189,10 +186,10 @@ export default function LawnBusinessApp() {
               border: "6px solid #27ae60",
               padding: "25px",
               mixBlendMode: "multiply",
-              filter: "contrast(1.1) brightness(1.1)",
             }}
           />
         </h1>
+
         <div
           style={{
             marginTop: "20px",
@@ -219,6 +216,7 @@ export default function LawnBusinessApp() {
             style={{ height: "80px", width: "80px" }}
           />
         </div>
+
         <div
           style={{
             marginTop: "30px",
@@ -317,13 +315,9 @@ export default function LawnBusinessApp() {
                   <td style={{ padding: "12px" }}>
                     <strong>Lawn Mowing & Maintenance</strong>
                   </td>
-                  <td
-                    style={{ textAlign: "right", padding: "12px" }}
-                    className="sqft-detail"
-                  >
-                    {/* This span will be removed ONLY in the customer PDF */}
+                  <td style={{ textAlign: "right", padding: "12px" }}>
                     <span className="internal-only">
-                      {totalArea.toLocaleString()} sq ft
+                      {totalArea.toLocaleString()} sq ft{" "}
                     </span>
                     {onlyMowing && rawLawnCost < 50
                       ? "Min. Charge"
@@ -465,7 +459,6 @@ export default function LawnBusinessApp() {
             <strong
               style={{
                 color: "#27ae60",
-                textTransform: "uppercase",
                 display: "block",
                 marginBottom: "5px",
               }}
@@ -476,12 +469,10 @@ export default function LawnBusinessApp() {
               📞 (954) 787-8150
             </div>
           </div>
-
           <div style={{ flex: 1, textAlign: "center" }}>
             <strong
               style={{
                 color: "#27ae60",
-                textTransform: "uppercase",
                 display: "block",
                 marginBottom: "5px",
               }}
@@ -490,21 +481,17 @@ export default function LawnBusinessApp() {
             </strong>
             <div>{customer.address || "Property Address"}</div>
           </div>
-
           <div style={{ flex: 1, textAlign: "right" }}>
             <strong
               style={{
                 color: "#27ae60",
-                textTransform: "uppercase",
                 display: "block",
                 marginBottom: "5px",
               }}
             >
               Next Steps
             </strong>
-            <div style={{ fontWeight: "bold" }}>
-              Call or text to schedule your service.
-            </div>
+            <div style={{ fontWeight: "bold" }}>Call or text to schedule.</div>
             <div
               style={{
                 fontStyle: "italic",
@@ -512,12 +499,13 @@ export default function LawnBusinessApp() {
                 color: "#e74c3c",
               }}
             >
-              This estimate is valid for 7 days.
+              Valid for 7 days.
             </div>
           </div>
         </div>
       </div>
 
+      {/* STEP 2: MEASUREMENT */}
       <LawnCalculator
         isLoaded={isLoaded}
         setTotalArea={setTotalArea}
@@ -526,7 +514,7 @@ export default function LawnBusinessApp() {
         externalAddress={searchQuery}
       />
 
-      {/* UI Controls for Checkboxes */}
+      {/* STEP 2.5: SERVICE SELECTION */}
       <div
         style={{
           padding: "20px",
@@ -538,48 +526,25 @@ export default function LawnBusinessApp() {
       >
         <h3>Step 2.5: Select Services</h3>
         <div style={{ display: "flex", gap: "20px" }}>
-          <label>
-            <input
-              type="checkbox"
-              checked={activeServices.mowing}
-              onChange={(e) =>
-                setActiveServices({
-                  ...activeServices,
-                  mowing: e.target.checked,
-                })
-              }
-            />{" "}
-            Mowing
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              checked={activeServices.shrubs}
-              onChange={(e) =>
-                setActiveServices({
-                  ...activeServices,
-                  shrubs: e.target.checked,
-                })
-              }
-            />{" "}
-            Shrubs
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              checked={activeServices.cleanup}
-              onChange={(e) =>
-                setActiveServices({
-                  ...activeServices,
-                  cleanup: e.target.checked,
-                })
-              }
-            />{" "}
-            Clean-up
-          </label>
+          {["mowing", "shrubs", "cleanup"].map((service) => (
+            <label key={service}>
+              <input
+                type="checkbox"
+                checked={activeServices[service]}
+                onChange={(e) =>
+                  setActiveServices({
+                    ...activeServices,
+                    [service]: e.target.checked,
+                  })
+                }
+              />
+              {" " + service.charAt(0).toUpperCase() + service.slice(1)}
+            </label>
+          ))}
         </div>
       </div>
 
+      {/* STEP 3: PRICING */}
       <EstimateCalculator
         mapTotalArea={totalArea}
         pricingData={pricingData}
@@ -587,6 +552,7 @@ export default function LawnBusinessApp() {
         activeServices={activeServices}
       />
 
+      {/* ACTION BUTTONS */}
       <div className="action-buttons-container">
         <div style={{ display: "flex", gap: "15px", marginBottom: "10px" }}>
           <button
@@ -619,64 +585,26 @@ export default function LawnBusinessApp() {
           </button>
         </div>
         <button
-          onClick={() => formRef.current?.requestSubmit()}
-          className="btn-save"
+          onClick={resetEverything}
+          className="btn-clear"
+          style={{ width: "100%", padding: "15px", marginTop: "10px" }}
         >
-          Save & Store Estimate: ${pricingData.finalTotal.toFixed(2)}
+          Reset Everything for New Estimate
         </button>
       </div>
     </div>
   );
 }
 
-function CompleteEstimateApp({
-  totalArea,
-  pricingData,
-  resetApp,
-  formRef,
-  customer,
-  setCustomer,
-  activeServices,
-}) {
-  const handleSave = async (e) => {
-    e.preventDefault();
-    if (totalArea === 0 && activeServices.mowing)
-      return alert("Please measure an area first.");
+// --- SUB-COMPONENTS ---
 
-    try {
-      const { error } = await supabase.from("estimates").insert([
-        {
-          name: customer.name,
-          address: customer.address,
-          phone: customer.phone,
-          email: customer.email,
-          lawn_area: totalArea,
-          notes: customer.notes,
-          rate_used: parseFloat(pricingData.ratePerSqFt) || 0,
-          shrub_price: activeServices.shrubs
-            ? parseFloat(pricingData.shrubPrice)
-            : 0,
-          cleanup_price: activeServices.cleanup
-            ? parseFloat(pricingData.cleanupPrice)
-            : 0,
-          final_price: pricingData.finalTotal,
-        },
-      ]);
-      if (error) throw error;
-      alert("Success! Estimate stored.");
-      resetApp();
-    } catch (err) {
-      alert("Failed to save: " + err.message);
-    }
-  };
-
+function CustomerInfoForm({ customer, setCustomer }) {
   const inputStyle = {
     padding: "12px",
     borderRadius: "4px",
     border: "1px solid #ccc",
     fontSize: "16px",
   };
-
   return (
     <div
       style={{
@@ -688,60 +616,47 @@ function CompleteEstimateApp({
       }}
     >
       <h3>Step 1: Customer Information</h3>
-      <form
-        ref={formRef}
-        onSubmit={handleSave}
-        style={{ display: "flex", flexDirection: "column", gap: "15px" }}
+      <div
+        className="customer-grid"
+        style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "15px" }}
       >
-        <div className="customer-grid" style={{ marginBottom: "20px" }}>
-          <input
-            type="text"
-            placeholder="Full Name"
-            required
-            value={customer.name}
-            onChange={(e) => setCustomer({ ...customer, name: e.target.value })}
-            style={inputStyle}
-          />
-          <input
-            type="text"
-            placeholder="Service Address"
-            required
-            value={customer.address}
-            onChange={(e) =>
-              setCustomer({ ...customer, address: e.target.value })
-            }
-            style={inputStyle}
-          />
-          <input
-            type="tel"
-            placeholder="Phone Number"
-            value={customer.phone}
-            onChange={(e) =>
-              setCustomer({ ...customer, phone: e.target.value })
-            }
-            style={inputStyle}
-          />
-          <input
-            type="email"
-            placeholder="Email Address"
-            value={customer.email}
-            onChange={(e) =>
-              setCustomer({ ...customer, email: e.target.value })
-            }
-            style={inputStyle}
-          />
-          <div style={{ gridColumn: "1 / -1", marginTop: "10px" }}>
-            <textarea
-              placeholder="Notes..."
-              value={customer.notes}
-              onChange={(e) =>
-                setCustomer({ ...customer, notes: e.target.value })
-              }
-              style={{ ...inputStyle, width: "100%", minHeight: "80px" }}
-            />
-          </div>
-        </div>
-      </form>
+        <input
+          type="text"
+          placeholder="Full Name"
+          value={customer.name}
+          onChange={(e) => setCustomer({ ...customer, name: e.target.value })}
+          style={inputStyle}
+        />
+        <input
+          type="text"
+          placeholder="Service Address"
+          value={customer.address}
+          onChange={(e) =>
+            setCustomer({ ...customer, address: e.target.value })
+          }
+          style={inputStyle}
+        />
+        <input
+          type="tel"
+          placeholder="Phone Number"
+          value={customer.phone}
+          onChange={(e) => setCustomer({ ...customer, phone: e.target.value })}
+          style={inputStyle}
+        />
+        <input
+          type="email"
+          placeholder="Email Address"
+          value={customer.email}
+          onChange={(e) => setCustomer({ ...customer, email: e.target.value })}
+          style={inputStyle}
+        />
+        <textarea
+          placeholder="Notes..."
+          value={customer.notes}
+          onChange={(e) => setCustomer({ ...customer, notes: e.target.value })}
+          style={{ ...inputStyle, gridColumn: "1 / -1", minHeight: "80px" }}
+        />
+      </div>
     </div>
   );
 }
@@ -751,86 +666,96 @@ function LawnCalculator({
   setTotalArea,
   totalArea,
   externalAddress,
+  onLoadClear,
 }) {
   const [mapInstance, setMapInstance] = useState(null);
   const [polygons, setPolygons] = useState([]);
   const [activePath, setActivePath] = useState([]);
   const [mode, setMode] = useState("view");
   const [autocomplete, setAutocomplete] = useState(null);
-
   const [mapViewport, setMapViewport] = useState({
     lat: 26.1224,
     lng: -80.1373,
   });
   const [zoomLevel, setZoomLevel] = useState(15);
 
-  const focusMap = useCallback(
-    (location) => {
-      if (!mapInstance || !location) return;
-      const newPos = { lat: location.lat(), lng: location.lng() };
-
-      // 1. Update React state first
-      setMapViewport(newPos);
-      setZoomLevel(21);
-
-      // 2. Force the Map Instance with a slight delay to override React's render
-      setTimeout(() => {
-        if (mapInstance) {
-          mapInstance.setCenter(newPos);
-          mapInstance.setMapTypeId("satellite");
-          mapInstance.setTilt(0);
-          // Calling zoom twice (once now, once in 100ms) ensures it sticks
-          mapInstance.setZoom(21);
-          setTimeout(() => mapInstance.setZoom(21), 100);
-        }
-      }, 50);
-    },
-    [mapInstance],
-  );
-
-  useEffect(() => {
-    // Only geocode if the address looks substantial
-    if (
-      isLoaded &&
-      mapInstance &&
-      externalAddress?.trim().length > 6 &&
-      window.google
-    ) {
-      const geocoder = new window.google.maps.Geocoder();
-      const timeoutId = setTimeout(() => {
-        geocoder.geocode({ address: externalAddress }, (results, status) => {
-          if (status === "OK" && results[0]) {
-            focusMap(results[0].geometry.location);
-          }
-        });
-      }, 1500); // Wait for user to finish typing
-      return () => clearTimeout(timeoutId);
-    }
-  }, [externalAddress, isLoaded, mapInstance, focusMap]);
-
-  const finishShape = () => {
-    if (activePath.length < 3) return;
-    setPolygons((prev) => [...prev, activePath]);
-    setActivePath([]);
-  };
-
   const handleClearAll = useCallback(() => {
     setPolygons([]);
     setActivePath([]);
     setTotalArea(0);
     setMode("view");
-    setZoomLevel(15);
   }, [setTotalArea]);
 
-  const onPolygonEdit = useCallback((index, polygonInstance) => {
-    const newPath = polygonInstance
-      .getPath()
-      .getArray()
-      .map((latLng) => ({ lat: latLng.lat(), lng: latLng.lng() }));
+  useEffect(() => {
+    if (onLoadClear) onLoadClear(handleClearAll);
+  }, [onLoadClear, handleClearAll]);
 
+  useEffect(() => {
+    if (mapInstance) {
+      // Force the map to refresh its view once it's ready
+      mapInstance.setMapTypeId("satellite");
+      mapInstance.setTilt(0);
+    }
+  }, [mapInstance]);
+
+  const focusMap = useCallback(
+    (location) => {
+      if (!mapInstance || !location) return;
+      const newPos = { lat: location.lat(), lng: location.lng() };
+
+      // 1. Move the map immediately using the instance
+      mapInstance.panTo(newPos);
+      mapInstance.setMapTypeId("satellite");
+      mapInstance.setTilt(0);
+
+      // 2. Update the viewport state so the map stays centered
+      setMapViewport(newPos);
+
+      // 3. Update the zoom state with a slight delay.
+      // This ensures React's 'zoom={zoomLevel}' prop doesn't
+      // overwrite the map's zoom while it is still panning.
+      setTimeout(() => {
+        setZoomLevel(21);
+        mapInstance.setZoom(21);
+      }, 100);
+
+      // 4. Robust 'Idle' listener for a final force
+      const listener = mapInstance.addListener("idle", () => {
+        setZoomLevel(21);
+        mapInstance.setZoom(21);
+        window.google.maps.event.removeListener(listener);
+      });
+    },
+    [mapInstance],
+  );
+
+  useEffect(() => {
+    if (isLoaded && mapInstance && externalAddress?.trim().length > 6) {
+      const geocoder = new window.google.maps.Geocoder();
+      const timeoutId = setTimeout(() => {
+        geocoder.geocode({ address: externalAddress }, (results, status) => {
+          if (status === "OK" && results[0])
+            focusMap(results[0].geometry.location);
+        });
+      }, 1500);
+      return () => clearTimeout(timeoutId);
+    }
+  }, [externalAddress, isLoaded, mapInstance, focusMap]);
+
+  const onPolygonEdit = useCallback((index, polygonInstance) => {
+    if (!polygonInstance) return;
+
+    // 1. Get the updated path from the actual Google Map element
+    const path = polygonInstance.getPath();
+    const updatedCoords = path.getArray().map((latLng) => ({
+      lat: latLng.lat(),
+      lng: latLng.lng(),
+    }));
+
+    // 2. Update the polygons array in state to trigger the area recalculation
     setPolygons((prev) => {
       const next = [...prev];
-      next[index] = newPath;
+      next[index] = updatedCoords;
       return next;
     });
   }, []);
@@ -852,15 +777,12 @@ function LawnCalculator({
     setTotalArea(calculatedArea);
   }, [calculatedArea, setTotalArea]);
 
-  if (!isLoaded) return null;
-
   return (
     <div style={{ borderBottom: "2px solid #eee", paddingBottom: "20px" }}>
       <div
         style={{
           display: "flex",
           justifyContent: "space-between",
-          alignItems: "center",
           marginBottom: "10px",
         }}
       >
@@ -875,16 +797,14 @@ function LawnCalculator({
             fontWeight: "bold",
           }}
         >
-          Total Area: {(totalArea || 0).toLocaleString()} sq ft
+          Total Area: {totalArea.toLocaleString()} sq ft
         </div>
       </div>
-
       <div
-        className="measure-bar"
         style={{
-          marginBottom: "15px",
           display: "flex",
           gap: "10px",
+          marginBottom: "15px",
           flexWrap: "wrap",
         }}
       >
@@ -898,59 +818,56 @@ function LawnCalculator({
           <input
             type="text"
             placeholder="Search Address..."
-            className="search-input"
             style={{ padding: "10px", width: "250px" }}
           />
         </Autocomplete>
-
-        {/* Buttons with restored className logic for CSS styling */}
         <button
           className={`btn-draw ${mode === "draw" ? "active" : ""}`}
           onClick={() => setMode("draw")}
         >
           Draw Mode
         </button>
-
         {mode === "draw" && activePath.length > 0 && (
           <button
-            className="btn-finish"
-            onClick={finishShape}
+            onClick={() => {
+              setPolygons([...polygons, activePath]);
+              setActivePath([]);
+            }}
             style={{ backgroundColor: "#27ae60", color: "white" }}
           >
             Finish Section
           </button>
         )}
-
         <button
           className={`btn-edit ${mode === "edit" ? "active" : ""}`}
           onClick={() => setMode(mode === "edit" ? "view" : "edit")}
-          style={{ backgroundColor: mode === "edit" ? "#f1c40f" : "" }}
         >
           {mode === "edit" ? "Save/Done" : "Edit"}
         </button>
-
         <button className="btn-clear" onClick={handleClearAll}>
           Clear Map
         </button>
       </div>
-
       <div
-        className="map-container"
         style={{ height: "450px", borderRadius: "12px", overflow: "hidden" }}
       >
         <GoogleMap
           onLoad={setMapInstance}
           zoom={zoomLevel}
-          center={mapViewport}
-          onZoomChanged={() =>
-            mapInstance && setZoomLevel(mapInstance.getZoom())
-          }
+          center={mapViewport} // Use the state variable
+          onZoomChanged={() => {
+            if (mapInstance) {
+              const newZoom = mapInstance.getZoom();
+              // Only update state if the zoom is actually different and valid
+              if (newZoom && newZoom !== zoomLevel) {
+                setZoomLevel(newZoom);
+              }
+            }
+          }}
           onClick={(e) => {
             if (mode === "draw") {
-              setActivePath([
-                ...activePath,
-                { lat: e.latLng.lat(), lng: e.latLng.lng() },
-              ]);
+              const newPoint = { lat: e.latLng.lat(), lng: e.latLng.lng() };
+              setActivePath((prev) => [...prev, newPoint]);
             }
           }}
           mapContainerStyle={{ height: "100%", width: "100%" }}
@@ -958,6 +875,8 @@ function LawnCalculator({
             tilt: 0,
             maxZoom: 22,
             mapTypeId: "satellite",
+            // Adding these ensures UI doesn't interfere
+            disableDefaultUI: false,
             gestureHandling: mode === "draw" ? "none" : "greedy",
           }}
         >
@@ -967,11 +886,22 @@ function LawnCalculator({
               path={p}
               editable={mode === "edit"}
               draggable={mode === "edit"}
+              // CHANGE: Use 'this' to refer to the actual Polygon being dragged/edited
               onMouseUp={function () {
                 onPolygonEdit(i, this);
               }}
               onDragEnd={function () {
                 onPolygonEdit(i, this);
+              }}
+              // These listeners catch the path changes specifically
+              onLoad={(polygon) => {
+                const path = polygon.getPath();
+                window.google.maps.event.addListener(path, "set_at", () =>
+                  onPolygonEdit(i, polygon),
+                );
+                window.google.maps.event.addListener(path, "insert_at", () =>
+                  onPolygonEdit(i, polygon),
+                );
               }}
               options={{
                 fillColor: "#27ae60",
@@ -1005,15 +935,19 @@ function EstimateCalculator({
   activeServices,
 }) {
   const { ratePerSqFt, shrubPrice, cleanupPrice } = pricingData;
-  const onlyMowing =
-    activeServices.mowing && !activeServices.shrubs && !activeServices.cleanup;
   const rawLawnCost = mapTotalArea * ratePerSqFt;
-  const lawnCost = onlyMowing && rawLawnCost < 50 ? 50 : rawLawnCost;
+  const lawnCost =
+    activeServices.mowing &&
+    !activeServices.shrubs &&
+    !activeServices.cleanup &&
+    rawLawnCost < 50
+      ? 50
+      : rawLawnCost;
 
   const finalTotal =
     (activeServices.mowing ? lawnCost : 0) +
-    (activeServices.shrubs ? parseFloat(shrubPrice || 0) : 0) +
-    (activeServices.cleanup ? parseFloat(cleanupPrice || 0) : 0);
+    (activeServices.shrubs ? Number(shrubPrice || 0) : 0) +
+    (activeServices.cleanup ? Number(cleanupPrice || 0) : 0);
 
   useEffect(() => {
     setPricingData((prev) => ({ ...prev, finalTotal }));
@@ -1030,42 +964,51 @@ function EstimateCalculator({
       }}
     >
       <h3>Step 3: Pricing & Extras</h3>
-      <div style={{ marginBottom: "10px" }}>
-        <label>Rate/sqft: </label>
-        <input
-          type="number"
-          step="0.01"
-          value={ratePerSqFt}
-          onChange={(e) =>
-            setPricingData({ ...pricingData, ratePerSqFt: e.target.value })
-          }
-        />
+      <div style={{ display: "grid", gap: "10px" }}>
+        <div>
+          <label>Rate/sqft: </label>
+          <input
+            type="number"
+            step="0.01"
+            value={ratePerSqFt}
+            onChange={(e) =>
+              setPricingData({ ...pricingData, ratePerSqFt: e.target.value })
+            }
+          />
+        </div>
+        {activeServices.shrubs && (
+          <div>
+            <label>Shrub Fee: </label>
+            <input
+              type="number"
+              value={shrubPrice}
+              onChange={(e) =>
+                setPricingData({ ...pricingData, shrubPrice: e.target.value })
+              }
+            />
+          </div>
+        )}
+        {activeServices.cleanup && (
+          <div>
+            <label>Cleanup Fee: </label>
+            <input
+              type="number"
+              value={cleanupPrice}
+              onChange={(e) =>
+                setPricingData({ ...pricingData, cleanupPrice: e.target.value })
+              }
+            />
+          </div>
+        )}
       </div>
-      {activeServices.shrubs && (
-        <div style={{ marginBottom: "10px" }}>
-          <label>Shrub Fee: </label>
-          <input
-            type="number"
-            value={shrubPrice}
-            onChange={(e) =>
-              setPricingData({ ...pricingData, shrubPrice: e.target.value })
-            }
-          />
-        </div>
-      )}
-      {activeServices.cleanup && (
-        <div style={{ marginBottom: "10px" }}>
-          <label>Cleanup Fee: </label>
-          <input
-            type="number"
-            value={cleanupPrice}
-            onChange={(e) =>
-              setPricingData({ ...pricingData, cleanupPrice: e.target.value })
-            }
-          />
-        </div>
-      )}
-      <div style={{ fontSize: "24px", fontWeight: "bold", color: "#27ae60" }}>
+      <div
+        style={{
+          fontSize: "24px",
+          fontWeight: "bold",
+          color: "#27ae60",
+          marginTop: "10px",
+        }}
+      >
         Total: ${finalTotal.toFixed(2)}
       </div>
     </div>
