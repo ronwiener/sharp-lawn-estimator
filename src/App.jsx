@@ -93,16 +93,18 @@ export default function LawnBusinessApp() {
 
     try {
       const clone = element.cloneNode(true);
-      const checkboxes = clone.querySelectorAll('input[type="checkbox"]');
-      checkboxes.forEach((cb) => (cb.style.display = "none"));
 
+      // 1. Handle Visibility based on Service Selection
+      // Instead of hiding checkboxes, we ensure the rows match your React state
       if (type === "customer") {
+        // Hide the "Details" column (index 1) for customers
         const allRows = clone.querySelectorAll("tr");
         allRows.forEach((row) => {
           const cells = row.querySelectorAll("th, td");
-          if (cells[1])
-            cells[1].style.setProperty("display", "none", "important");
+          if (cells[1]) cells[1].style.display = "none";
         });
+
+        // Hide the Internal Subtotal line
         const subtotalContainer = clone.querySelector(
           "div[style*='background-color: #f8f9fa']",
         );
@@ -113,30 +115,52 @@ export default function LawnBusinessApp() {
         }
       }
 
+      // 2. Setup Clone for Rendering
       Object.assign(clone.style, {
         position: "absolute",
         top: "-9999px",
         left: "0",
-        width: "800px",
+        width: "800px", // Keep width fixed for consistent scaling
         height: "auto",
         display: "block",
       });
 
       document.body.appendChild(clone);
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 100)); // Slight delay for fonts/images
+
       const canvas = await html2canvas(clone, {
         scale: 2,
         useCORS: true,
         backgroundColor: "#ffffff",
+        logging: false,
       });
+
       document.body.removeChild(clone);
 
-      const imgData = canvas.toDataURL("image/jpeg", 0.8);
+      // 3. Multi-Page Logic (The fix for Problem #1)
+      const imgData = canvas.toDataURL("image/jpeg", 0.95);
       const pdf = new jsPDF("p", "mm", "a4");
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
 
-      pdf.addImage(imgData, "JPEG", 0, 0, pdfWidth, pdfHeight);
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      const imgWidth = pdfWidth;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+      let heightLeft = imgHeight;
+      let position = 0;
+
+      // Add first page
+      pdf.addImage(imgData, "JPEG", 0, position, imgWidth, imgHeight);
+      heightLeft -= pdfHeight;
+
+      // Add additional pages if the notes/table make the content too long
+      while (heightLeft >= 0) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, "JPEG", 0, position, imgWidth, imgHeight);
+        heightLeft -= pdfHeight;
+      }
+
       const safeName = (customer.name || "Customer")
         .trim()
         .replace(/[^a-z0-9]/gi, "_");
