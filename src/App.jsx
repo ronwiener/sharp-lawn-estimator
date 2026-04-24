@@ -522,8 +522,7 @@ export default function LawnBusinessApp() {
         <div style={{ display: "flex", gap: "20px", alignItems: "center" }}>
           <label>
             <input
-              type="text"
-              placeholder="Custom Service"
+              type="checkbox"
               checked={activeServices.mowing}
               onChange={(e) =>
                 setActiveServices({
@@ -570,7 +569,7 @@ export default function LawnBusinessApp() {
             />
             <input
               type="text"
-              placeholder="Custom Service e.g. Mulching"
+              placeholder="Custom Service"
               value={activeServices.customLabel}
               onChange={(e) =>
                 setActiveServices({
