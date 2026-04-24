@@ -33,7 +33,7 @@ export default function LawnBusinessApp() {
     mowing: true,
     shrubs: false,
     custom: false,
-    customLabel: "Custom Service",
+    customLabel: "",
   });
 
   const [totalArea, setTotalArea] = useState(0);
@@ -522,7 +522,8 @@ export default function LawnBusinessApp() {
         <div style={{ display: "flex", gap: "20px", alignItems: "center" }}>
           <label>
             <input
-              type="checkbox"
+              type="text"
+              placeholder="Custom Service"
               checked={activeServices.mowing}
               onChange={(e) =>
                 setActiveServices({
@@ -550,15 +551,20 @@ export default function LawnBusinessApp() {
           {/* New Custom Service Input */}
           <div
             style={{
-              display: "flex",
+              display: "inline-flex",
               alignItems: "center",
               gap: "10px",
-              borderLeft: "1px solid #eee",
-              paddingLeft: "20px",
+              padding: "8px 12px",
+              backgroundColor: activeServices.custom ? "#f0fff4" : "#f9f9f9", // Subtle green highlight when active
+              borderRadius: "6px",
+              border: "1px solid",
+              borderColor: activeServices.custom ? "#27ae60" : "#ddd",
+              transition: "all 0.2s",
             }}
           >
             <input
               type="checkbox"
+              id="customServiceToggle"
               checked={activeServices.custom}
               onChange={(e) =>
                 setActiveServices({
@@ -566,10 +572,11 @@ export default function LawnBusinessApp() {
                   custom: e.target.checked,
                 })
               }
+              style={{ width: "18px", height: "18px", cursor: "pointer" }}
             />
             <input
               type="text"
-              placeholder="e.g. Mulching"
+              placeholder="Custom Service (e.g. Mulching)"
               value={activeServices.customLabel}
               onChange={(e) =>
                 setActiveServices({
@@ -577,10 +584,14 @@ export default function LawnBusinessApp() {
                   customLabel: e.target.value,
                 })
               }
+              disabled={!activeServices.custom} // Grey out the text box if not checked
               style={{
-                padding: "5px",
+                padding: "6px",
                 borderRadius: "4px",
                 border: "1px solid #ccc",
+                backgroundColor: activeServices.custom ? "#fff" : "#eee",
+                cursor: activeServices.custom ? "text" : "not-allowed",
+                outline: "none",
               }}
             />
           </div>
