@@ -32,7 +32,8 @@ export default function LawnBusinessApp() {
   const [activeServices, setActiveServices] = useState({
     mowing: true,
     shrubs: false,
-    cleanup: false,
+    custom: false,
+    customLabel: "Custom Service",
   });
 
   const [totalArea, setTotalArea] = useState(0);
@@ -349,13 +350,10 @@ export default function LawnBusinessApp() {
                   </td>
                 </tr>
               )}
-              {activeServices.cleanup && (
+              {activeServices.custom && (
                 <tr style={{ borderBottom: "1px solid #eee" }}>
                   <td style={{ padding: "12px" }}>
-                    <strong>Lawn Clean-up</strong>
-                  </td>
-                  <td style={{ textAlign: "right", padding: "12px" }}>
-                    Flat Fee
+                    <strong>{activeServices.customLabel}</strong>
                   </td>
                   <td
                     style={{
@@ -521,22 +519,71 @@ export default function LawnBusinessApp() {
         }}
       >
         <h3>Step 2.5: Select Services</h3>
-        <div style={{ display: "flex", gap: "20px" }}>
-          {["mowing", "shrubs", "cleanup"].map((service) => (
-            <label key={service}>
-              <input
-                type="checkbox"
-                checked={activeServices[service]}
-                onChange={(e) =>
-                  setActiveServices({
-                    ...activeServices,
-                    [service]: e.target.checked,
-                  })
-                }
-              />
-              {" " + service.charAt(0).toUpperCase() + service.slice(1)}
-            </label>
-          ))}
+        <div style={{ display: "flex", gap: "20px", alignItems: "center" }}>
+          <label>
+            <input
+              type="checkbox"
+              checked={activeServices.mowing}
+              onChange={(e) =>
+                setActiveServices({
+                  ...activeServices,
+                  mowing: e.target.checked,
+                })
+              }
+            />{" "}
+            Mowing
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={activeServices.shrubs}
+              onChange={(e) =>
+                setActiveServices({
+                  ...activeServices,
+                  shrubs: e.target.checked,
+                })
+              }
+            />{" "}
+            Shrubs
+          </label>
+
+          {/* New Custom Service Input */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "10px",
+              borderLeft: "1px solid #eee",
+              paddingLeft: "20px",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={activeServices.custom}
+              onChange={(e) =>
+                setActiveServices({
+                  ...activeServices,
+                  custom: e.target.checked,
+                })
+              }
+            />
+            <input
+              type="text"
+              placeholder="e.g. Mulching"
+              value={activeServices.customLabel}
+              onChange={(e) =>
+                setActiveServices({
+                  ...activeServices,
+                  customLabel: e.target.value,
+                })
+              }
+              style={{
+                padding: "5px",
+                borderRadius: "4px",
+                border: "1px solid #ccc",
+              }}
+            />
+          </div>
         </div>
       </div>
 
@@ -930,12 +977,14 @@ function EstimateCalculator({
   setPricingData,
   activeServices,
 }) {
+  // We'll use 'cleanupPrice' as the state key to keep your existing pricingData structure
   const { ratePerSqFt, shrubPrice, cleanupPrice } = pricingData;
+
   const rawLawnCost = mapTotalArea * ratePerSqFt;
   const lawnCost =
     activeServices.mowing &&
     !activeServices.shrubs &&
-    !activeServices.cleanup &&
+    !activeServices.custom && // Updated flag
     rawLawnCost < 50
       ? 50
       : rawLawnCost;
@@ -943,7 +992,7 @@ function EstimateCalculator({
   const finalTotal =
     (activeServices.mowing ? lawnCost : 0) +
     (activeServices.shrubs ? Number(shrubPrice || 0) : 0) +
-    (activeServices.cleanup ? Number(cleanupPrice || 0) : 0);
+    (activeServices.custom ? Number(cleanupPrice || 0) : 0); // Updated flag
 
   useEffect(() => {
     setPricingData((prev) => ({ ...prev, finalTotal }));
@@ -972,6 +1021,7 @@ function EstimateCalculator({
             }
           />
         </div>
+
         {activeServices.shrubs && (
           <div>
             <label>Shrub Fee: </label>
@@ -984,9 +1034,11 @@ function EstimateCalculator({
             />
           </div>
         )}
-        {activeServices.cleanup && (
+
+        {/* Custom Service Price Input */}
+        {activeServices.custom && (
           <div>
-            <label>Cleanup Fee: </label>
+            <label>{activeServices.customLabel || "Custom"}: </label>
             <input
               type="number"
               value={cleanupPrice}
@@ -997,6 +1049,7 @@ function EstimateCalculator({
           </div>
         )}
       </div>
+
       <div
         style={{
           fontSize: "24px",
