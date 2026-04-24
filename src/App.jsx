@@ -551,20 +551,15 @@ export default function LawnBusinessApp() {
           {/* New Custom Service Input */}
           <div
             style={{
-              display: "inline-flex",
+              display: "flex",
               alignItems: "center",
               gap: "10px",
-              padding: "8px 12px",
-              backgroundColor: activeServices.custom ? "#f0fff4" : "#f9f9f9", // Subtle green highlight when active
-              borderRadius: "6px",
-              border: "1px solid",
-              borderColor: activeServices.custom ? "#27ae60" : "#ddd",
-              transition: "all 0.2s",
+              borderLeft: "1px solid #eee",
+              paddingLeft: "20px",
             }}
           >
             <input
               type="checkbox"
-              id="customServiceToggle"
               checked={activeServices.custom}
               onChange={(e) =>
                 setActiveServices({
@@ -572,11 +567,10 @@ export default function LawnBusinessApp() {
                   custom: e.target.checked,
                 })
               }
-              style={{ width: "18px", height: "18px", cursor: "pointer" }}
             />
             <input
               type="text"
-              placeholder="Custom Service (e.g. Mulching)"
+              placeholder="Custom Service e.g. Mulching"
               value={activeServices.customLabel}
               onChange={(e) =>
                 setActiveServices({
@@ -584,14 +578,10 @@ export default function LawnBusinessApp() {
                   customLabel: e.target.value,
                 })
               }
-              disabled={!activeServices.custom} // Grey out the text box if not checked
               style={{
-                padding: "6px",
+                padding: "5px",
                 borderRadius: "4px",
                 border: "1px solid #ccc",
-                backgroundColor: activeServices.custom ? "#fff" : "#eee",
-                cursor: activeServices.custom ? "text" : "not-allowed",
-                outline: "none",
               }}
             />
           </div>
